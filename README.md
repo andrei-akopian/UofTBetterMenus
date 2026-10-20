@@ -89,3 +89,19 @@ The server runs on `http://localhost:8080`.
 - `http://localhost:8080/campus-one/2026-10-20/lunch` — CampusOne Lunch
 - `http://localhost:8080/oak-house/2026-10-20/lunch` — Oak House Lunch
 - `http://localhost:8080/frequency` — Food Item Frequency Tracker
+
+---
+
+## TODO
+
+- [ ] Verify and double check the reverse engineering. Test how stable the assumptions are.
+- [ ] Create a food frequency analysis page.
+- [ ] Setup header with about and link to github repo.
+- [ ] double check tos to make sure scraping is permissible
+- [ ] add a "no responsibilities" warning
+- [ ] procure all the photos of different food.
+- [ ] Create detection for special / nonstandard events (like thanksgiving dinner etc.)
+- [ ] Set up docker packaging for future deployment to fly.io or railway.
+- [ ] Move cache to persistent storage so it survives re-deployment
+- [ ] Scraper on a chron job that fetches newly published menus once a day
+  - [ ] check whether menus for future days are finalized or change
