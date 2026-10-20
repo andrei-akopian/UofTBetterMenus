@@ -1,0 +1,23 @@
+{
+  "egg salad": "egg_salad.svg",
+  "tuna salad": "salad.svg",
+  "beef burger": "burger.svg",
+  "veggie burger": "burger.svg",
+  "classic chicken noodle soup": "soup.svg",
+  "french canadian pea soup": "soup.svg",
+  "pepperoni": "pizza.svg",
+  "cheese": "pizza.svg",
+  "roasted vegetable pizza": "pizza.svg",
+  "chocolate chip cookie": "cookie.svg",
+  "oatmeal cookie": "cookie.svg",
+  "carrot cake": "cake.svg",
+  "apple crumble": "cake.svg",
+  "teriyaki chicken stir fry": "stir_fry.svg",
+  "teriyaki tofu stir fry": "stir_fry.svg",
+  "roasted pork with three pepper salsa": "entree.svg",
+  "jerk seasoned tofu": "entree.svg",
+  "mixed greens": "salad.svg",
+  "german potato salad": "salad.svg",
+  "chocolate pudding": "cake.svg",
+  "vanila pudding": "cake.svg"
+}

@@ -1,0 +1,667 @@
+(** HTML View templates for UofT Dining Menu System *)
+
+let escape_html (s : string) : string =
+  let buf = Buffer.create (String.length s) in
+  String.iter (function
+    | '&' -> Buffer.add_string buf "&amp;"
+    | '<' -> Buffer.add_string buf "&lt;"
+    | '>' -> Buffer.add_string buf "&gt;"
+    | '"' -> Buffer.add_string buf "&quot;"
+    | '\'' -> Buffer.add_string buf "&#39;"
+    | c -> Buffer.add_char buf c
+  ) s;
+  Buffer.contents buf
+
+let parse_date_components (s : string) : int * int * int =
+  let clean = String.concat "" (String.split_on_char '-' s) in
+  if String.length clean = 8 then
+    try
+      let y = int_of_string (String.sub clean 0 4) in
+      let m = int_of_string (String.sub clean 4 2) in
+      let d = int_of_string (String.sub clean 6 2) in
+      (y, m, d)
+    with _ -> (2026, 10, 20)
+  else
+    (2026, 10, 20)
+
+let shift_date (s : string) (days : int) : string =
+  let (y, m, d) = parse_date_components s in
+  let tm = {
+    Unix.tm_sec = 0; tm_min = 0; tm_hour = 12;
+    tm_mday = d + days;
+    tm_mon = m - 1;
+    tm_year = y - 1900;
+    tm_wday = 0; tm_yday = 0; tm_isdst = false;
+  } in
+  let (time_sec, _) = Unix.mktime tm in
+  let new_tm = Unix.localtime time_sec in
+  Printf.sprintf "%04d-%02d-%02d" (new_tm.tm_year + 1900) (new_tm.tm_mon + 1) new_tm.tm_mday
+
+let get_today_str () : string =
+  let tm = Unix.localtime (Unix.time ()) in
+  Printf.sprintf "%04d-%02d-%02d" (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
+
+let clean_date (s : string) : string =
+  String.concat "" (String.split_on_char '-' s)
+
+(** Get accurate relative day badge (Today, Tomorrow, Yesterday, or None) and formatted date *)
+let format_date_display (date_str : string) : string option * string * string =
+  let (y, m, d) = parse_date_components date_str in
+  let tm = {
+    Unix.tm_sec = 0; tm_min = 0; tm_hour = 12;
+    tm_mday = d;
+    tm_mon = m - 1;
+    tm_year = y - 1900;
+    tm_wday = 0; tm_yday = 0; tm_isdst = false;
+  } in
+  let (time_sec, _) = Unix.mktime tm in
+  let final_tm = Unix.localtime time_sec in
+  let day_name =
+    match final_tm.tm_wday with
+    | 0 -> "Sunday" | 1 -> "Monday" | 2 -> "Tuesday" | 3 -> "Wednesday"
+    | 4 -> "Thursday" | 5 -> "Friday" | 6 -> "Saturday" | _ -> ""
+  in
+  let month_name =
+    match final_tm.tm_mon with
+    | 0 -> "Jan" | 1 -> "Feb" | 2 -> "Mar" | 3 -> "Apr"
+    | 4 -> "May" | 5 -> "Jun" | 6 -> "Jul" | 7 -> "Aug"
+    | 8 -> "Sep" | 9 -> "Oct" | 10 -> "Nov" | 11 -> "Dec" | _ -> ""
+  in
+  let today_str = get_today_str () in
+  let tomorrow_str = shift_date today_str 1 in
+  let yesterday_str = shift_date today_str (-1) in
+  let c_target = clean_date date_str in
+  let rel_badge =
+    if c_target = clean_date today_str then Some "Today"
+    else if c_target = clean_date tomorrow_str then Some "Tomorrow"
+    else if c_target = clean_date yesterday_str then Some "Yesterday"
+    else None
+  in
+  let date_title = Printf.sprintf "%s, %s %d" day_name month_name final_tm.tm_mday in
+  let year_str = Printf.sprintf "%d" (final_tm.tm_year + 1900) in
+  (rel_badge, date_title, year_str)
+
+(** Global HTML Page Shell *)
+let html_shell ~(title : string) ~(content : string) : string =
+  Printf.sprintf {|<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>%s</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+  <div id="page-container">
+    %s
+  </div>
+</body>
+</html>|} (escape_html title) content
+
+(** Landing page for blank path "/" *)
+let render_landing_page ~(today : string) : string =
+  let halls_html =
+    List.map (fun (h : Types.hall_info) ->
+      let link_url = Printf.sprintf "/%s/%s" h.slug today in
+      Printf.sprintf {|
+        <a href="%s" class="hall-card-button" hx-boost="true">
+          <div>
+            <div class="hall-card-name">%s</div>
+            <div class="hall-card-address">%s</div>
+          </div>
+          <div class="hall-card-arrow">›</div>
+        </a>
+      |} link_url (escape_html h.name) (escape_html h.address)
+    ) Types.dining_halls
+    |> String.concat "\n"
+  in
+  let content = Printf.sprintf {|
+    <div class="landing-container">
+      <div class="landing-hero">
+        <h1 class="landing-title">UofT Dining</h1>
+        <p class="landing-subtitle">Select your dining hall to view today's fresh menu</p>
+      </div>
+
+      <div class="landing-halls-grid">
+        %s
+      </div>
+
+      <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--border-subtle);">
+        <a href="/frequency" class="badge badge-neutral" style="text-decoration:none; padding: 6px 12px;" hx-boost="true">
+          📊 Food Frequency Analytics
+        </a>
+      </div>
+    </div>
+  |} halls_html in
+  html_shell ~title:"Select Dining Hall | UofT Menu" ~content
+
+(** Render 1-click Dining Halls Toggle List with all 5 halls *)
+let render_halls_nav ~(active_slug : string) ~(date_str : string) ~(meal_slug : string) : string =
+  let tabs =
+    List.map (fun (h : Types.hall_info) ->
+      let is_active = String.equal h.slug active_slug in
+      let active_cls = if is_active then "active" else "" in
+      let url = Printf.sprintf "/%s/%s/%s" h.slug date_str meal_slug in
+      Printf.sprintf {|<a href="%s" class="hall-tab %s" hx-get="%s" hx-target="#page-container" hx-push-url="true">%s</a>|}
+        url active_cls url (escape_html h.short_name)
+    ) Types.dining_halls
+  in
+  Printf.sprintf {|<nav class="halls-switcher" role="navigation" aria-label="Dining halls">%s</nav>|}
+    (String.concat "" tabs)
+
+(** Render Day Switcher with 1-click Forward and Back buttons & accurate Today/Tomorrow indicators.
+    Hides "Next Day" button if the next day is unavailable. *)
+let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug : string) ?(next_day_available = true) () : string =
+  let prev_date = shift_date date_str (-1) in
+  let next_date = shift_date date_str 1 in
+  let (rel_badge_opt, day_main, year_str) = format_date_display date_str in
+  let today = get_today_str () in
+  let is_today = clean_date date_str = clean_date today in
+  let prev_url = Printf.sprintf "/%s/%s/%s" hall_slug prev_date meal_slug in
+  let next_url = Printf.sprintf "/%s/%s/%s" hall_slug next_date meal_slug in
+  let today_url = Printf.sprintf "/%s/%s/%s" hall_slug today meal_slug in
+  let badge_html =
+    match rel_badge_opt with
+    | Some "Today" -> {|<span class="badge badge-today">Today</span>|}
+    | Some "Tomorrow" -> {|<span class="badge badge-tomorrow">Tomorrow</span>|}
+    | Some "Yesterday" -> {|<span class="badge badge-neutral">Yesterday</span>|}
+    | Some other -> Printf.sprintf {|<span class="badge badge-neutral">%s</span>|} (escape_html other)
+    | None -> ""
+  in
+  let jump_today_row =
+    if not is_today then
+      Printf.sprintf {|
+        <div style="text-align: center; margin-top: 4px;">
+          <a href="%s" class="jump-today-btn" hx-get="%s" hx-target="#page-container" hx-push-url="true">
+            ↩ Return to Today
+          </a>
+        </div>
+      |} today_url today_url
+    else ""
+  in
+  let next_btn_html =
+    if next_day_available then
+      Printf.sprintf {|
+        <a href="%s" class="day-btn" hx-get="%s" hx-target="#page-container" hx-push-url="true">
+          Next Day ›
+        </a>
+      |} next_url next_url
+    else
+      {|<span class="day-btn-placeholder" aria-hidden="true"></span>|}
+  in
+  Printf.sprintf {|
+    <div class="day-switcher-wrapper">
+      <div class="day-switcher">
+        <a href="%s" class="day-btn" hx-get="%s" hx-target="#page-container" hx-push-url="true">
+          ‹ Prev Day
+        </a>
+        <div class="day-indicator">
+          %s
+          <div class="day-main-title">%s</div>
+          <div class="day-sub">%s</div>
+        </div>
+        %s
+      </div>
+      %s
+    </div>
+  |} prev_url prev_url badge_html day_main year_str next_btn_html jump_today_row
+
+(** Render Meal Switcher with 1-click Breakfast, Lunch, Dinner buttons *)
+let render_meal_switcher ~(hall_slug : string) ~(date_str : string) ~(active_meal : string) : string =
+  let meals = [ ("breakfast", "Breakfast"); ("lunch", "Lunch"); ("dinner", "Dinner") ] in
+  let tabs =
+    List.map (fun (slug, label) ->
+      let is_active = String.equal slug active_meal in
+      let active_cls = if is_active then "active" else "" in
+      let url = Printf.sprintf "/%s/%s/%s" hall_slug date_str slug in
+      Printf.sprintf {|<a href="%s" class="meal-tab %s" hx-get="%s" hx-target="#page-container" hx-push-url="true">%s</a>|}
+        url active_cls url label
+    ) meals
+  in
+  Printf.sprintf {|<div class="meal-switcher">%s</div>|} (String.concat "" tabs)
+
+(** Render Photo Slot with bound file / dummy SVG (upload functionality removed) *)
+let render_photo_slot (d : Types.dish) : string =
+  let photo_url =
+    match d.image_url with
+    | Some u when u <> "" -> u
+    | _ -> Types.resolve_dish_photo d.name
+  in
+  Printf.sprintf {|
+    <div class="dish-photo-slot">
+      <img src="%s" alt="%s" class="dish-thumb" loading="lazy">
+    </div>
+  |} (escape_html photo_url) (escape_html d.name)
+
+(** Render Allergens and Dietary Tags in place of the uninteresting serving size *)
+let render_allergens_in_place (d : Types.dish) : string =
+  let allergen_badges =
+    if d.allergens <> [] then
+      [ Printf.sprintf {|<span class="badge badge-allergen">⚠️ Contains: %s</span>|} (escape_html (String.concat ", " d.allergens)) ]
+    else
+      [ {|<span class="badge badge-safe">✓ No major allergens</span>|} ]
+  in
+  let tag_badges =
+    List.map (fun t ->
+      let lower = String.lowercase_ascii t in
+      let cls =
+        if String.contains lower 'v' then "badge-veg"
+        else if String.contains lower 'h' then "badge-halal"
+        else "badge-neutral"
+      in
+      let icon =
+        if String.starts_with ~prefix:"veg" lower then "🌱"
+        else if String.starts_with ~prefix:"hal" lower then "حلال"
+        else "🏷️"
+      in
+      Printf.sprintf {|<span class="badge %s">%s %s</span>|} cls icon (escape_html t)
+    ) d.tags
+  in
+  let all_badges = allergen_badges @ tag_badges in
+  Printf.sprintf {|<div class="dish-allergens-row">%s</div>|} (String.concat "" all_badges)
+
+(** Render Collapsible Nutrition and Ingredients Details (Backgrounded) *)
+let render_collapsible_nutrition (d : Types.dish) : string =
+  match d.nutrition with
+  | None -> ""
+  | Some n ->
+    Printf.sprintf {|
+      <details class="dish-details-wrapper">
+        <summary class="dish-details-toggle">
+          <span>▾ Full Nutrition</span>
+        </summary>
+        <div class="dish-expanded-details">
+          <div class="nutrition-grid">
+            <div class="nutrition-cell">
+              <div class="nutrition-cell-label">Calories</div>
+              <div class="nutrition-cell-val">%s</div>
+            </div>
+            <div class="nutrition-cell">
+              <div class="nutrition-cell-label">Fat</div>
+              <div class="nutrition-cell-val">%sg</div>
+            </div>
+            <div class="nutrition-cell">
+              <div class="nutrition-cell-label">Carbs</div>
+              <div class="nutrition-cell-val">%sg</div>
+            </div>
+            <div class="nutrition-cell">
+              <div class="nutrition-cell-label">Protein</div>
+              <div class="nutrition-cell-val">%sg</div>
+            </div>
+            <div class="nutrition-cell">
+              <div class="nutrition-cell-label">Sodium</div>
+              <div class="nutrition-cell-val">%smg</div>
+            </div>
+            <div class="nutrition-cell">
+              <div class="nutrition-cell-label">Sugar</div>
+              <div class="nutrition-cell-val">%sg</div>
+            </div>
+            <div class="nutrition-cell">
+              <div class="nutrition-cell-label">Fibre</div>
+              <div class="nutrition-cell-val">%sg</div>
+            </div>
+            <div class="nutrition-cell">
+              <div class="nutrition-cell-label">Sat Fat</div>
+              <div class="nutrition-cell-val">%sg</div>
+            </div>
+          </div>
+          <div class="buffet-note">Buffet style dining · Nutritional values per standard portion</div>
+        </div>
+      </details>
+    |}
+    (escape_html n.calories)
+    (escape_html n.fat)
+    (escape_html n.carbs)
+    (escape_html n.protein)
+    (escape_html n.sodium)
+    (escape_html n.sugar)
+    (escape_html n.fibre)
+    (escape_html n.sat_fat)
+
+(** Render a single Dish Card (Serving size replaced with Allergens) *)
+let render_dish_card (d : Types.dish) : string =
+  let cal_badge =
+    match d.nutrition with
+    | Some n when n.calories <> "" && n.calories <> "-" ->
+      Printf.sprintf {|<span class="dish-calorie-badge">%s kcal</span>|} (escape_html n.calories)
+    | _ -> ""
+  in
+  Printf.sprintf {|
+    <div class="dish-card">
+      <div class="dish-card-body">
+        %s
+        <div class="dish-info">
+          <div class="dish-header-row">
+            <h3 class="dish-name">%s</h3>
+            %s
+          </div>
+          %s
+          %s
+        </div>
+      </div>
+    </div>
+  |} (render_photo_slot d) (escape_html d.name) cal_badge (render_allergens_in_place d) (render_collapsible_nutrition d)
+
+(** Check if a dish is a zero-cal / build-your-own header item *)
+let is_zero_cal_or_byo (d : Types.dish) : bool =
+  let lower = String.lowercase_ascii d.name in
+  Types.contains_sub lower "create your own" ||
+  Types.contains_sub lower "build your own" ||
+  Types.contains_sub lower "byo" ||
+  Types.contains_sub lower "custom" ||
+  (match d.nutrition with
+   | Some n -> n.calories = "0" || n.calories = "0.0" || n.calories = "-" || n.calories = ""
+   | None -> true)
+
+(** Check if a station is a composite Build-Your-Own station (Pan Station or Foodie Finds) *)
+let is_composite_station (sg : Types.station_group) : (Types.dish * Types.dish list) option =
+  let lower = String.lowercase_ascii sg.name in
+  if (Types.contains_sub lower "pan" || Types.contains_sub lower "foodie" || Types.contains_sub lower "find" || Types.contains_sub lower "wok")
+     && List.length sg.dishes > 1 then
+    let first = List.hd sg.dishes in
+    if is_zero_cal_or_byo first then
+      Some (first, List.tl sg.dishes)
+    else None
+  else None
+
+(** Check if a station is a Salad Stand section *)
+let is_salad_station (sg : Types.station_group) : bool =
+  let lower = String.lowercase_ascii sg.name in
+  Types.contains_sub lower "salad" && not (Types.contains_sub lower "fruit")
+
+(** Render a 1-line tall table row for an ingredient / salad item with click-to-expand nutrition *)
+let render_ingredient_table_row (d : Types.dish) : string =
+  let cal_str =
+    match d.nutrition with
+    | Some n when n.calories <> "" && n.calories <> "-" ->
+      Printf.sprintf "%s kcal" n.calories
+    | _ -> "-"
+  in
+  let allergen_badges =
+    if d.allergens <> [] then
+      String.concat " " (List.map (fun a ->
+        Printf.sprintf {|<span class="badge badge-allergen">⚠️ %s</span>|} (escape_html a)
+      ) d.allergens)
+    else
+      {|<span class="badge badge-safe">✓ None</span>|}
+  in
+  let tag_badges =
+    if d.tags <> [] then
+      " " ^ String.concat " " (List.map (fun t ->
+        let lower = String.lowercase_ascii t in
+        let cls = if String.contains lower 'v' then "badge-veg" else "badge-halal" in
+        let icon = if String.starts_with ~prefix:"veg" lower then "🌱" else "حلال" in
+        Printf.sprintf {|<span class="badge %s">%s %s</span>|} cls icon (escape_html t)
+      ) d.tags)
+    else ""
+  in
+  let nutrition_details_html =
+    match d.nutrition with
+    | None ->
+      Printf.sprintf {|
+        <div class="ingredient-expanded-nutrition">
+          <div class="buffet-note" style="padding: 4px 0;">No detailed nutritional breakdown published for this buffet item.</div>
+        </div>
+      |}
+    | Some n ->
+      Printf.sprintf {|
+        <div class="ingredient-expanded-nutrition">
+          <div class="nutrition-grid">
+            <div class="nutrition-cell"><div class="nutrition-cell-label">Calories</div><div class="nutrition-cell-val">%s</div></div>
+            <div class="nutrition-cell"><div class="nutrition-cell-label">Fat</div><div class="nutrition-cell-val">%sg</div></div>
+            <div class="nutrition-cell"><div class="nutrition-cell-label">Carbs</div><div class="nutrition-cell-val">%sg</div></div>
+            <div class="nutrition-cell"><div class="nutrition-cell-label">Protein</div><div class="nutrition-cell-val">%sg</div></div>
+            <div class="nutrition-cell"><div class="nutrition-cell-label">Sodium</div><div class="nutrition-cell-val">%smg</div></div>
+            <div class="nutrition-cell"><div class="nutrition-cell-label">Sugar</div><div class="nutrition-cell-val">%sg</div></div>
+            <div class="nutrition-cell"><div class="nutrition-cell-label">Fibre</div><div class="nutrition-cell-val">%sg</div></div>
+            <div class="nutrition-cell"><div class="nutrition-cell-label">Sat Fat</div><div class="nutrition-cell-val">%sg</div></div>
+          </div>
+          <div class="buffet-note">Buffet portion · Click row again to collapse</div>
+        </div>
+      |}
+      (escape_html n.calories) (escape_html n.fat) (escape_html n.carbs) (escape_html n.protein)
+      (escape_html n.sodium) (escape_html n.sugar) (escape_html n.fibre) (escape_html n.sat_fat)
+  in
+  Printf.sprintf {|
+    <details class="ingredient-table-row">
+      <summary class="ingredient-row-summary">
+        <span class="ing-col-name">%s</span>
+        <span class="ing-col-cal">%s</span>
+        <span class="ing-col-allergens">%s%s</span>
+        <span class="ing-col-arrow">▾</span>
+      </summary>
+      %s
+    </details>
+  |} (escape_html d.name) (escape_html cal_str) allergen_badges tag_badges nutrition_details_html
+
+(** Render a table of 1-line tall ingredients / items *)
+let render_ingredient_table (dishes : Types.dish list) : string =
+  let rows_html = List.map render_ingredient_table_row dishes |> String.concat "\n" in
+  Printf.sprintf {|
+    <div class="ingredient-table-container">
+      <div class="ingredient-table-header">
+        <span class="ing-col-name">Ingredient / Option</span>
+        <span class="ing-col-cal">Calories</span>
+        <span class="ing-col-allergens">Allergens & Dietary</span>
+        <span class="ing-col-arrow"></span>
+      </div>
+      <div class="ingredient-table-body">
+        %s
+      </div>
+    </div>
+  |} rows_html
+
+(** Render Composite Dish Section (Pan Station & Foodie Finds) with 1 Lead Image & 1-line Table of Ingredients *)
+let render_composite_station (sg : Types.station_group) (lead_dish : Types.dish) (ingredients : Types.dish list) : string =
+  let photo_url =
+    match lead_dish.image_url with
+    | Some u when u <> "" -> u
+    | _ -> Types.resolve_dish_photo lead_dish.name
+  in
+  let table_html = render_ingredient_table ingredients in
+  Printf.sprintf {|
+    <section class="station-section composite-section">
+      <div class="station-header">
+        <span>%s</span>
+        <span class="station-count">%d ingredients</span>
+      </div>
+
+      <div class="composite-lead-card">
+        <div class="composite-lead-body">
+          <div class="dish-photo-slot composite-photo-slot">
+            <img src="%s" alt="%s" class="dish-thumb" loading="lazy">
+          </div>
+          <div class="composite-lead-info">
+            <span class="composite-badge">Custom Bowl / Dish</span>
+            <h3 class="composite-lead-title">%s</h3>
+            <p class="composite-lead-subtitle">Single dish with customizable ingredients. Tap any ingredient row below to view full nutrition:</p>
+            %s
+          </div>
+        </div>
+      </div>
+
+      %s
+    </section>
+  |} (escape_html sg.name) (List.length ingredients)
+    (escape_html photo_url) (escape_html lead_dish.name)
+    (escape_html lead_dish.name)
+    (render_allergens_in_place lead_dish)
+    table_html
+
+(** Render Salad Stand Section with a Single Picture Spot & 1-line Table of Salad Items *)
+let render_salad_station (sg : Types.station_group) : string =
+  let salad_photo_url = "/static/photos/salad.svg" in
+  let table_html = render_ingredient_table sg.dishes in
+  Printf.sprintf {|
+    <section class="station-section salad-section">
+      <div class="station-header">
+        <span>%s</span>
+        <span class="station-count">%d items</span>
+      </div>
+
+      <div class="composite-lead-card salad-lead-card">
+        <div class="composite-lead-body">
+          <div class="dish-photo-slot composite-photo-slot">
+            <img src="%s" alt="Salad Stand" class="dish-thumb" loading="lazy">
+          </div>
+          <div class="composite-lead-info">
+            <span class="composite-badge">Fresh Salad Stand</span>
+            <h3 class="composite-lead-title">Salad Bar & Dressings</h3>
+            <p class="composite-lead-subtitle">Full selection of fresh greens, vegetables, seeds, cheeses, and dressings. Tap any row to view full nutrition:</p>
+          </div>
+        </div>
+      </div>
+
+      %s
+    </section>
+  |} (escape_html sg.name) (List.length sg.dishes)
+    salad_photo_url
+    table_html
+
+(** Render complete Main Menu Page for a hall, date, and meal *)
+let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) ?(next_day_available = true) () : string =
+  let header_html = Printf.sprintf {|
+    <header class="app-header">
+      <div class="brand-row">
+        <a href="/" class="brand-title" hx-boost="true">
+          <span>🍽️ UofT Dining</span>
+        </a>
+        <span class="brand-badge">%s</span>
+      </div>
+      %s
+      %s
+      %s
+    </header>
+  |} (escape_html active_hall.short_name)
+    (render_halls_nav ~active_slug:menu.hall_slug ~date_str:menu.date_str ~meal_slug:menu.meal_slug)
+    (render_day_switcher ~hall_slug:menu.hall_slug ~date_str:menu.date_str ~meal_slug:menu.meal_slug ~next_day_available ())
+    (render_meal_switcher ~hall_slug:menu.hall_slug ~date_str:menu.date_str ~active_meal:menu.meal_slug)
+  in
+  let stations_html =
+    if menu.stations = [] then
+      Printf.sprintf {|
+        <div class="empty-notice" style="margin-top: 24px;">
+          <h3>No Menu Scheduled</h3>
+          <p style="margin-top: 6px; font-size: 0.85rem;">No published meal items found for %s on this date.</p>
+          <p style="margin-top: 12px;">
+            <a href="/%s/%s" class="jump-today-btn" style="display:inline-flex; padding: 6px 14px;">View Today's Menu</a>
+          </p>
+        </div>
+      |} (escape_html menu.meal_name) menu.hall_slug (get_today_str ())
+    else
+      List.map (fun (sg : Types.station_group) ->
+        if is_salad_station sg then
+          render_salad_station sg
+        else
+          match is_composite_station sg with
+          | Some (lead_dish, ingredients) ->
+            render_composite_station sg lead_dish ingredients
+          | None ->
+            let dishes_cards = List.map render_dish_card sg.dishes |> String.concat "\n" in
+            Printf.sprintf {|
+              <section class="station-section">
+                <div class="station-header">
+                  <span>%s</span>
+                  <span class="station-count">%d items</span>
+                </div>
+                <div class="dishes-grid">
+                  %s
+                </div>
+              </section>
+            |} (escape_html sg.name) (List.length sg.dishes) dishes_cards
+      ) menu.stations
+      |> String.concat "\n"
+  in
+  let body_content = Printf.sprintf {|
+    %s
+    <main class="main-content">
+      %s
+    </main>
+  |} header_html stations_html in
+  let title = Printf.sprintf "%s %s Menu | %s" active_hall.short_name menu.meal_name menu.date_str in
+  html_shell ~title ~content:body_content
+
+(** Render HTMX fragment for dish label *)
+let render_label_fragment (lbl : Types.dish_label) : string =
+  let allergens_html =
+    if lbl.allergens = [] then
+      {|<div style="font-size: 0.74rem; color: #16a34a; font-weight: 600; margin-bottom: 4px;">✓ No major allergens reported</div>|}
+    else
+      let badges = List.map (fun a -> Printf.sprintf {|<span class="badge badge-allergen">⚠️ Contains: %s</span>|} (escape_html a)) lbl.allergens in
+      Printf.sprintf {|<div style="margin-bottom: 6px; display:flex; flex-wrap:wrap; gap:4px;">%s</div>|} (String.concat "" badges)
+  in
+  let may_contain_html =
+    if lbl.may_contain = [] then ""
+    else
+      let badges = List.map (fun mc -> Printf.sprintf {|<span class="badge badge-neutral">May contain: %s</span>|} (escape_html mc)) lbl.may_contain in
+      Printf.sprintf {|<div style="margin-bottom: 6px; display:flex; flex-wrap:wrap; gap:4px;">%s</div>|} (String.concat "" badges)
+  in
+  let ingredients_html =
+    if lbl.ingredients = "" then ""
+    else
+      Printf.sprintf {|
+        <div class="ingredients-box" style="margin-top: 6px;">
+          <div class="ingredients-title">Ingredients:</div>
+          <div>%s</div>
+        </div>
+      |} (escape_html lbl.ingredients)
+  in
+  Printf.sprintf {|
+    <div class="label-loaded" style="margin-top: 8px;">
+      %s
+      %s
+      %s
+    </div>
+  |} allergens_html may_contain_html ingredients_html
+
+(** Render Frequency Analytics Page *)
+let render_frequency_page ~(entries : Frequency.occurrence_entry list) ~(total : int) : string =
+  let today = get_today_str () in
+  let rows_html =
+    if entries = [] then
+      {|<tr><td colspan="3" style="text-align:center; color: var(--text-muted);">No dish occurrences recorded yet. Browse menus to track dish appearances!</td></tr>|}
+    else
+      List.mapi (fun idx (e : Frequency.occurrence_entry) ->
+        Printf.sprintf {|
+          <tr>
+            <td><strong>#%d</strong> %s</td>
+            <td><span class="badge badge-neutral">%d times</span></td>
+            <td><span style="font-size:0.75rem; color:var(--text-secondary);">%s</span></td>
+          </tr>
+        |} (idx + 1) (escape_html e.name) e.count (escape_html (String.concat ", " e.halls))
+      ) entries
+      |> String.concat "\n"
+  in
+  let content = Printf.sprintf {|
+    <header class="app-header">
+      <div class="brand-row">
+        <a href="/" class="brand-title" hx-boost="true">
+          <span>🍽️ UofT Dining</span>
+        </a>
+        <a href="/new-college/%s" class="brand-badge" style="text-decoration:none;">‹ Back to Menus</a>
+      </div>
+    </header>
+    <main class="main-content">
+      <div style="margin-bottom: 16px;">
+        <h2 style="font-size: 1.3rem; font-weight: 700;">Food Item Frequency Tracker</h2>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+          Tracking recurrence of dishes served across dining halls (%d unique items logged).
+        </p>
+      </div>
+
+      <table class="freq-table">
+        <thead>
+          <tr>
+            <th>Dish Name</th>
+            <th>Frequency</th>
+            <th>Dining Halls</th>
+          </tr>
+        </thead>
+        <tbody>
+          %s
+        </tbody>
+      </table>
+    </main>
+  |} today total rows_html in
+  html_shell ~title:"Food Frequency Analytics | UofT Dining" ~content

@@ -1,0 +1,3 @@
+(library
+ (name menu_lib)
+ (libraries dream lambdasoup base64 cohttp-lwt-unix uri yojson))
