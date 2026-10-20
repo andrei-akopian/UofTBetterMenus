@@ -105,3 +105,4 @@ The server runs on `http://localhost:8080`.
 - [ ] Move cache to persistent storage so it survives re-deployment
 - [ ] Scraper on a chron job that fetches newly published menus once a day
   - [ ] check whether menus for future days are finalized or change
+- [ ] Remove htmx. A fully server side implementation is entirely possible by custom editing all relevant links.
