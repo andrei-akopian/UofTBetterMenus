@@ -62,41 +62,50 @@ header.app-header {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
-  padding: 10px 14px;
+  padding: 8px 12px;
 }
 
-.brand-row {
+/* Non-sticky Disclaimer & Official Link Banner */
+.disclaimer-banner {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  align-items: flex-start;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
 }
 
-.brand-title {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--primary-dark);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  text-decoration: none;
+.disclaimer-icon {
+  font-size: 0.85rem;
+  line-height: 1.2;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
-.brand-badge {
-  font-size: 0.72rem;
+.disclaimer-text {
+  flex: 1;
+}
+
+.disclaimer-text a {
+  color: var(--primary);
+  text-decoration: underline;
   font-weight: 600;
-  padding: 2px 8px;
-  background: var(--accent-bg);
-  color: var(--accent-color);
-  border-radius: var(--radius-full);
+}
+
+.disclaimer-text a:hover {
+  color: var(--primary-dark);
 }
 
 /* Dining Halls Toggle Switcher (matching meal switcher style) */
 .halls-switcher {
   display: flex;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 0;
   margin-bottom: 2px;
 }
 
@@ -564,6 +573,12 @@ header.app-header {
 
   .day-btn-placeholder {
     width: 65px;
+  }
+
+  .disclaimer-banner {
+    padding: 7px 10px;
+    font-size: 0.70rem;
+    margin-bottom: 12px;
   }
 }
 

@@ -13,25 +13,36 @@ let get_current_meal_slug () : string =
 let safe_hall_or_default (hall_slug : string) : Types.hall_info =
   match Types.find_hall_by_slug hall_slug with
   | Some h -> h
-  | None -> List.hd Types.dining_halls
+  | None ->
+    (match Types.dining_halls with
+     | h :: _ -> h
+     | [] -> { slug = "new-college"; name = "New College Dining Hall"; short_name = "New College"; address = "" })
+
+let port =
+  match Sys.getenv_opt "PORT" with
+  | Some s -> (match int_of_string_opt s with Some p -> p | None -> 8080)
+  | None -> 8080
 
 let () =
   (* Initialize photo bindings on startup *)
-  Types.init_photos_from_file ();
+  Photos.init_photos_from_file ();
 
-  Dream.run ~interface:"0.0.0.0" ~port:8080
+  (* Hydrate dish frequency tracker from on-disk cached menus *)
+  Frequency.hydrate_from_cache ~cache_menus_dir:Api_client.cache_menus_dir;
+
+  Dream.run ~interface:"0.0.0.0" ~port
   @@ Dream.logger
   @@ Dream.router [
-    (* Static assets (CSS, HTMX, photos, etc.) *)
+    (* Static assets (CSS, photos, etc.) *)
     Dream.get "/static/**" (Dream.static "static");
 
     (* Blank path: returns minimalist landing page with dining hall selection buttons *)
     Dream.get "/" (fun _request ->
-      let today = Views.get_today_str () in
+      let today = Date_utils.get_today_str () in
       Dream.html (Views.render_landing_page ~today)
     );
 
-    (* Future Analytics: Food Item Frequency Tracker *)
+    (* Food Item Frequency Tracker *)
     Dream.get "/frequency" (fun _request ->
       let entries = Frequency.get_top_frequent ~limit:50 () in
       let total = Frequency.total_dishes_tracked () in
@@ -45,7 +56,7 @@ let () =
     (* Short URL: /hall -> redirects to /hall/today/meal *)
     Dream.get "/:hall" (fun request ->
       let hall = Dream.param request "hall" in
-      let today = Views.get_today_str () in
+      let today = Date_utils.get_today_str () in
       let meal = get_current_meal_slug () in
       Dream.redirect request (Printf.sprintf "/%s/%s/%s" hall today meal)
     );
@@ -64,17 +75,9 @@ let () =
       let date_str = Dream.param request "date" in
       let meal_slug = Dream.param request "meal" in
       let active_hall = safe_hall_or_default hall_slug in
-      let next_date = Views.shift_date date_str 1 in
+      let next_date = Date_utils.shift_date date_str 1 in
       Api_client.fetch_meal_menu ~hall_slug ~date_str ~meal_slug >>= fun menu ->
       Api_client.is_date_available ~hall_slug ~date_str:next_date >>= fun next_day_available ->
       Dream.html (Views.render_main_menu ~menu ~active_hall ~next_day_available ())
-    );
-
-    (* HTMX endpoint for lazy-loaded label details *)
-    Dream.get "/api/label/:menu_id/:line_id" (fun request ->
-      let menu_id = Dream.param request "menu_id" in
-      let line_id = Dream.param request "line_id" in
-      Api_client.fetch_dish_label ~menu_id ~line_id >>= fun lbl ->
-      Dream.html (Views.render_label_fragment lbl)
     );
   ]

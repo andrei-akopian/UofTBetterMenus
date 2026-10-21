@@ -98,11 +98,11 @@ The server runs on `http://localhost:8080`.
 - [ ] Create a food frequency analysis page.
 - [ ] Setup header with about and link to github repo.
 - [ ] double check tos to make sure scraping is permissible
-- [ ] add a "no responsibilities" warning
+- [x] add a "no responsibilities" warning
 - [ ] procure all the photos of different food.
 - [ ] Create detection for special / nonstandard events (like thanksgiving dinner etc.)
 - [ ] Set up docker packaging for future deployment to fly.io or railway.
 - [ ] Move cache to persistent storage so it survives re-deployment
 - [ ] Scraper on a chron job that fetches newly published menus once a day
   - [ ] check whether menus for future days are finalized or change
-- [ ] Remove htmx. A fully server side implementation is entirely possible by custom editing all relevant links.
+- [x] Remove htmx. A fully server side implementation is entirely possible by custom editing all relevant links.

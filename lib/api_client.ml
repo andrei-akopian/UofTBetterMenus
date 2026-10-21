@@ -49,121 +49,6 @@ let disk_date_path (date_str : string) : string =
 let disk_label_path ~(menu_id : string) ~(line_id : string) : string =
   Filename.concat cache_labels_dir (Printf.sprintf "%s_%s.json" menu_id line_id)
 
-(** Token representation of DevExpress binary serialized itemsInfo *)
-type de_token =
-  | DEStr of string
-  | DEStruct of int
-  | DEByte of int
-
-let tokenize_items_info (b64 : string) : de_token list =
-  match Base64.decode b64 with
-  | Error _ -> []
-  | Ok raw ->
-    let len = String.length raw in
-    let pos = ref 0 in
-    let tokens = ref [] in
-    while !pos < len do
-      let b = Char.code raw.[!pos] in
-      incr pos;
-      if b = 2 && !pos < len then (
-        let slen = Char.code raw.[!pos] in
-        incr pos;
-        if !pos + slen <= len then (
-          let s = String.sub raw !pos slen in
-          pos := !pos + slen;
-          tokens := DEStr s :: !tokens
-        ) else
-          tokens := DEByte b :: !tokens
-      ) else if b = 7 && !pos < len then (
-        let count = Char.code raw.[!pos] in
-        incr pos;
-        tokens := DEStruct count :: !tokens
-      ) else (
-        tokens := DEByte b :: !tokens
-      )
-    done;
-    List.rev !tokens
-
-let is_uuid (s : string) : bool =
-  String.length s = 36 &&
-  s.[8] = '-' && s.[13] = '-' && s.[18] = '-' && s.[23] = '-'
-
-let parse_location_hierarchy (tokens : de_token list) : (string * (string * string) list) list =
-  let locations = ref [] in
-  let current_loc = ref "" in
-  let current_meals = ref [] in
-  let flush () =
-    if !current_loc <> "" && !current_meals <> [] then (
-      locations := (!current_loc, List.rev !current_meals) :: !locations;
-      current_meals := []
-    )
-  in
-  let tok_array = Array.of_list tokens in
-  let n = Array.length tok_array in
-  let i = ref 0 in
-  while !i < n do
-    match tok_array.(!i) with
-    | DEStr "noaction" when !i + 1 < n ->
-      (match tok_array.(!i + 1) with
-      | DEStr loc_candidate when loc_candidate <> "Locations" ->
-        flush ();
-        current_loc := loc_candidate;
-        i := !i + 2
-      | _ -> incr i)
-    | DEStr uuid when is_uuid uuid && !i + 1 < n ->
-      (match tok_array.(!i + 1) with
-      | DEStr meal_name ->
-        if !current_loc <> "" then
-          current_meals := (meal_name, uuid) :: !current_meals;
-        i := !i + 2
-      | _ -> incr i)
-    | _ -> incr i
-  done;
-  flush ();
-  List.rev !locations
-
-let extract_items_info_from_html (html : string) : string option =
-  let pattern = Re.Perl.compile_pat "'mnuUnits'[^\\{]+\\{[^\\{]+'stateObject':\\{'itemsInfo':'([^']+)'" in
-  match Re.exec_opt pattern html with
-  | Some groups -> Some (Re.Group.get groups 1)
-  | None ->
-    let fallback_pattern = Re.Perl.compile_pat "'itemsInfo':'([^']+)'" in
-    (match Re.exec_opt fallback_pattern html with
-     | Some groups -> Some (Re.Group.get groups 1)
-     | None -> None)
-
-(** Hierarchy to/from Yojson *)
-let hierarchy_to_yojson (h : (string * (string * string) list) list) : Yojson.Safe.t =
-  `List (List.map (fun (loc, meals) ->
-    `Assoc [
-      ("location", `String loc);
-      ("meals", `List (List.map (fun (m, u) -> `Assoc [("meal", `String m); ("uuid", `String u)]) meals))
-    ]
-  ) h)
-
-let hierarchy_of_yojson (j : Yojson.Safe.t) : (string * (string * string) list) list =
-  match j with
-  | `List locs ->
-    List.filter_map (function
-      | `Assoc pairs ->
-        let loc = match List.assoc_opt "location" pairs with Some (`String s) -> s | _ -> "" in
-        let meals =
-          match List.assoc_opt "meals" pairs with
-          | Some (`List ml) ->
-            List.filter_map (function
-              | `Assoc mpairs ->
-                let m = match List.assoc_opt "meal" mpairs with Some (`String s) -> s | _ -> "" in
-                let u = match List.assoc_opt "uuid" mpairs with Some (`String s) -> s | _ -> "" in
-                if m <> "" && u <> "" then Some (m, u) else None
-              | _ -> None
-            ) ml
-          | _ -> []
-        in
-        if loc <> "" then Some (loc, meals) else None
-      | _ -> None
-    ) locs
-  | _ -> []
-
 (** Fetch date hierarchy with persistent disk caching *)
 let fetch_date_hierarchy (date_str_raw : string) : (string * (string * string) list) list Lwt.t =
   let clean_date = String.concat "" (String.split_on_char '-' date_str_raw) in
@@ -174,65 +59,26 @@ let fetch_date_hierarchy (date_str_raw : string) : (string * (string * string) l
     if Sys.file_exists disk_file then (
       try
         let json = Yojson.Safe.from_file disk_file in
-        let h = hierarchy_of_yojson json in
+        let h = Devexpress.hierarchy_of_yojson json in
         Hashtbl.replace date_units_memory_cache clean_date h;
         Lwt.return h
       with _ -> Lwt.return []
     ) else (
       let url = Printf.sprintf "%s/GetDate?dt=%s" base_url clean_date in
       http_get url >>= fun html ->
-      let info_opt = extract_items_info_from_html html in
-      let html_to_use =
-        match info_opt with
-        | Some _ -> html
-        | None ->
-          (try
-            let ic = open_in "Menu Nutritional Information.htm" in
-            let n = in_channel_length ic in
-            let s = really_input_string ic n in
-            close_in ic;
-            s
-          with _ -> "")
-      in
-      match extract_items_info_from_html html_to_use with
+      match Devexpress.extract_items_info_from_html html with
       | Some b64 ->
-        let tokens = tokenize_items_info b64 in
-        let hierarchy = parse_location_hierarchy tokens in
+        let tokens = Devexpress.tokenize_items_info b64 in
+        let hierarchy = Devexpress.parse_location_hierarchy tokens in
         Hashtbl.replace date_units_memory_cache clean_date hierarchy;
         (try
-          let j = hierarchy_to_yojson hierarchy in
+          let j = Devexpress.hierarchy_to_yojson hierarchy in
           Yojson.Safe.to_file disk_file j
         with _ -> ());
         Lwt.return hierarchy
       | None ->
         Lwt.return []
     )
-
-let contains_sub (s : string) (sub : string) : bool =
-  Types.contains_sub s sub
-
-(** Infer likely allergens & dietary tags from dish name *)
-let infer_allergens_and_tags (dish_name : string) : string list * string list =
-  let lower = String.lowercase_ascii dish_name in
-  let allergens = ref [] in
-  let tags = ref [] in
-  let add_al a = if not (List.mem a !allergens) then allergens := a :: !allergens in
-  let add_tg t = if not (List.mem t !tags) then tags := t :: !tags in
-
-  if contains_sub lower "egg" || contains_sub lower "omelet" || contains_sub lower "mayo" then add_al "Egg";
-  if contains_sub lower "milk" || contains_sub lower "cheese" || contains_sub lower "butter" || contains_sub lower "cream" || contains_sub lower "feta" || contains_sub lower "cheddar" || contains_sub lower "parmesan" || contains_sub lower "pudding" || contains_sub lower "ice cream" then add_al "Dairy";
-  if contains_sub lower "fish" || contains_sub lower "tuna" || contains_sub lower "salmon" || contains_sub lower "cod" then add_al "Fish";
-  if contains_sub lower "shrimp" || contains_sub lower "surimi" || contains_sub lower "crab" then add_al "Shellfish";
-  if contains_sub lower "peanut" || contains_sub lower "almond" || contains_sub lower "walnut" || contains_sub lower "pecan" then add_al "Tree Nuts";
-  if contains_sub lower "tofu" || contains_sub lower "soy" || contains_sub lower "edamame" then add_al "Soy";
-  if contains_sub lower "wheat" || contains_sub lower "gluten" || contains_sub lower "pizza" || contains_sub lower "pasta" || contains_sub lower "bread" || contains_sub lower "cookie" || contains_sub lower "cake" || contains_sub lower "brownie" || contains_sub lower "cracker" || contains_sub lower "burger" then add_al "Gluten";
-  if contains_sub lower "pork" || contains_sub lower "ham" || contains_sub lower "bacon" || contains_sub lower "salami" || contains_sub lower "pepperoni" || contains_sub lower "bologna" then add_al "Pork";
-
-  if contains_sub lower "vegan" then (add_tg "Vegan"; add_tg "Vegetarian")
-  else if contains_sub lower "veggie" || contains_sub lower "vegetarian" || contains_sub lower "salad" || contains_sub lower "tofu" || contains_sub lower "cheese" || contains_sub lower "fruit" then add_tg "Vegetarian";
-  if contains_sub lower "halal" || contains_sub lower "chicken" || contains_sub lower "beef" || contains_sub lower "stir fry" || contains_sub lower "tofu" then add_tg "Halal";
-
-  (List.rev !allergens, List.rev !tags)
 
 let clean_badge_text (s : string) : string =
   let trimmed = String.trim s in
@@ -359,8 +205,8 @@ let parse_report_html (html : string) : Types.station_group list =
           else None
         in
         if dish_name <> "" then (
-          let inferred_al, inferred_tg = infer_allergens_and_tags dish_name in
-          let img = Types.resolve_dish_photo dish_name in
+          let inferred_al, inferred_tg = Dietary.infer_allergens_and_tags dish_name in
+          let img = Photos.resolve_dish_photo dish_name in
           let dish = {
             Types.name = dish_name;
             menu_id;
@@ -475,6 +321,9 @@ let fetch_meal_menu ~(hall_slug : string) ~(date_str : string) ~(meal_slug : str
           in
           let menu = { m with stations = sorted_stations } in
           Hashtbl.replace menu_memory_cache mem_key menu;
+          List.iter (fun (sg : Types.station_group) ->
+            Frequency.record_dishes ~hall:hall_slug ~date:date_str sg.dishes
+          ) sorted_stations;
           Lwt.return menu
         | None -> Lwt.fail (Failure "Failed to parse cached menu")
       with _ ->
@@ -497,6 +346,9 @@ let fetch_meal_menu ~(hall_slug : string) ~(date_str : string) ~(meal_slug : str
             stations;
           } in
           Hashtbl.replace menu_memory_cache mem_key result;
+          List.iter (fun (sg : Types.station_group) ->
+            Frequency.record_dishes ~hall:hall_slug ~date:date_str sg.dishes
+          ) stations;
           (try Yojson.Safe.to_file disk_file (Types.meal_menu_to_yojson result) with _ -> ());
           Lwt.return result
     ) else (
@@ -512,18 +364,7 @@ let fetch_meal_menu ~(hall_slug : string) ~(date_str : string) ~(meal_slug : str
       | Some (actual_meal_name, menu_uuid) ->
         let url = Printf.sprintf "%s/GetReport/%s" base_url menu_uuid in
         http_post url "allergens=&tags=&maycontain=" >>= fun html ->
-        let html_to_parse =
-          if String.length html > 500 then html
-          else
-            (try
-              let ic = open_in "Menu Nutritional Information.htm" in
-              let n = in_channel_length ic in
-              let s = really_input_string ic n in
-              close_in ic;
-              s
-            with _ -> html)
-        in
-        let stations = parse_report_html html_to_parse in
+        let stations = parse_report_html html in
         List.iter (fun (sg : Types.station_group) ->
           Frequency.record_dishes ~hall:hall_slug ~date:date_str sg.dishes
         ) stations;

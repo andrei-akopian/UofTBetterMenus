@@ -12,74 +12,11 @@ let escape_html (s : string) : string =
   ) s;
   Buffer.contents buf
 
-let parse_date_components (s : string) : int * int * int =
-  let clean = String.concat "" (String.split_on_char '-' s) in
-  if String.length clean = 8 then
-    try
-      let y = int_of_string (String.sub clean 0 4) in
-      let m = int_of_string (String.sub clean 4 2) in
-      let d = int_of_string (String.sub clean 6 2) in
-      (y, m, d)
-    with _ -> (2026, 10, 20)
-  else
-    (2026, 10, 20)
-
-let shift_date (s : string) (days : int) : string =
-  let (y, m, d) = parse_date_components s in
-  let tm = {
-    Unix.tm_sec = 0; tm_min = 0; tm_hour = 12;
-    tm_mday = d + days;
-    tm_mon = m - 1;
-    tm_year = y - 1900;
-    tm_wday = 0; tm_yday = 0; tm_isdst = false;
-  } in
-  let (time_sec, _) = Unix.mktime tm in
-  let new_tm = Unix.localtime time_sec in
-  Printf.sprintf "%04d-%02d-%02d" (new_tm.tm_year + 1900) (new_tm.tm_mon + 1) new_tm.tm_mday
-
-let get_today_str () : string =
-  let tm = Unix.localtime (Unix.time ()) in
-  Printf.sprintf "%04d-%02d-%02d" (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
-
-let clean_date (s : string) : string =
-  String.concat "" (String.split_on_char '-' s)
-
-(** Get accurate relative day badge (Today, Tomorrow, Yesterday, or None) and formatted date *)
-let format_date_display (date_str : string) : string option * string * string =
-  let (y, m, d) = parse_date_components date_str in
-  let tm = {
-    Unix.tm_sec = 0; tm_min = 0; tm_hour = 12;
-    tm_mday = d;
-    tm_mon = m - 1;
-    tm_year = y - 1900;
-    tm_wday = 0; tm_yday = 0; tm_isdst = false;
-  } in
-  let (time_sec, _) = Unix.mktime tm in
-  let final_tm = Unix.localtime time_sec in
-  let day_name =
-    match final_tm.tm_wday with
-    | 0 -> "Sunday" | 1 -> "Monday" | 2 -> "Tuesday" | 3 -> "Wednesday"
-    | 4 -> "Thursday" | 5 -> "Friday" | 6 -> "Saturday" | _ -> ""
-  in
-  let month_name =
-    match final_tm.tm_mon with
-    | 0 -> "Jan" | 1 -> "Feb" | 2 -> "Mar" | 3 -> "Apr"
-    | 4 -> "May" | 5 -> "Jun" | 6 -> "Jul" | 7 -> "Aug"
-    | 8 -> "Sep" | 9 -> "Oct" | 10 -> "Nov" | 11 -> "Dec" | _ -> ""
-  in
-  let today_str = get_today_str () in
-  let tomorrow_str = shift_date today_str 1 in
-  let yesterday_str = shift_date today_str (-1) in
-  let c_target = clean_date date_str in
-  let rel_badge =
-    if c_target = clean_date today_str then Some "Today"
-    else if c_target = clean_date tomorrow_str then Some "Tomorrow"
-    else if c_target = clean_date yesterday_str then Some "Yesterday"
-    else None
-  in
-  let date_title = Printf.sprintf "%s, %s %d" day_name month_name final_tm.tm_mday in
-  let year_str = Printf.sprintf "%d" (final_tm.tm_year + 1900) in
-  (rel_badge, date_title, year_str)
+let parse_date_components = Date_utils.parse_date_components
+let shift_date = Date_utils.shift_date
+let get_today_str = Date_utils.get_today_str
+let clean_date = Date_utils.clean_date
+let format_date_display = Date_utils.format_date_display
 
 (** Global HTML Page Shell *)
 let html_shell ~(title : string) ~(content : string) : string =
@@ -90,7 +27,6 @@ let html_shell ~(title : string) ~(content : string) : string =
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>%s</title>
   <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/htmx.min.js"></script>
 </head>
 <body>
   <div id="page-container">
@@ -105,7 +41,7 @@ let render_landing_page ~(today : string) : string =
     List.map (fun (h : Types.hall_info) ->
       let link_url = Printf.sprintf "/%s/%s" h.slug today in
       Printf.sprintf {|
-        <a href="%s" class="hall-card-button" hx-boost="true">
+        <a href="%s" class="hall-card-button">
           <div>
             <div class="hall-card-name">%s</div>
             <div class="hall-card-address">%s</div>
@@ -128,7 +64,7 @@ let render_landing_page ~(today : string) : string =
       </div>
 
       <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--border-subtle);">
-        <a href="/frequency" class="badge badge-neutral" style="text-decoration:none; padding: 6px 12px;" hx-boost="true">
+        <a href="/frequency" class="badge badge-neutral" style="text-decoration:none; padding: 6px 12px;">
           📊 Food Frequency Analytics
         </a>
       </div>
@@ -143,8 +79,8 @@ let render_halls_nav ~(active_slug : string) ~(date_str : string) ~(meal_slug : 
       let is_active = String.equal h.slug active_slug in
       let active_cls = if is_active then "active" else "" in
       let url = Printf.sprintf "/%s/%s/%s" h.slug date_str meal_slug in
-      Printf.sprintf {|<a href="%s" class="hall-tab %s" hx-get="%s" hx-target="#page-container" hx-push-url="true">%s</a>|}
-        url active_cls url (escape_html h.short_name)
+      Printf.sprintf {|<a href="%s" class="hall-tab %s">%s</a>|}
+        url active_cls (escape_html h.short_name)
     ) Types.dining_halls
   in
   Printf.sprintf {|<nav class="halls-switcher" role="navigation" aria-label="Dining halls">%s</nav>|}
@@ -173,27 +109,27 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
     if not is_today then
       Printf.sprintf {|
         <div style="text-align: center; margin-top: 4px;">
-          <a href="%s" class="jump-today-btn" hx-get="%s" hx-target="#page-container" hx-push-url="true">
+          <a href="%s" class="jump-today-btn">
             ↩ Return to Today
           </a>
         </div>
-      |} today_url today_url
+      |} today_url
     else ""
   in
   let next_btn_html =
     if next_day_available then
       Printf.sprintf {|
-        <a href="%s" class="day-btn" hx-get="%s" hx-target="#page-container" hx-push-url="true">
+        <a href="%s" class="day-btn">
           Next Day ›
         </a>
-      |} next_url next_url
+      |} next_url
     else
       {|<span class="day-btn-placeholder" aria-hidden="true"></span>|}
   in
   Printf.sprintf {|
     <div class="day-switcher-wrapper">
       <div class="day-switcher">
-        <a href="%s" class="day-btn" hx-get="%s" hx-target="#page-container" hx-push-url="true">
+        <a href="%s" class="day-btn">
           ‹ Prev Day
         </a>
         <div class="day-indicator">
@@ -205,7 +141,7 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
       </div>
       %s
     </div>
-  |} prev_url prev_url badge_html day_main year_str next_btn_html jump_today_row
+  |} prev_url badge_html day_main year_str next_btn_html jump_today_row
 
 (** Render Meal Switcher with 1-click Breakfast, Lunch, Dinner buttons *)
 let render_meal_switcher ~(hall_slug : string) ~(date_str : string) ~(active_meal : string) : string =
@@ -215,8 +151,8 @@ let render_meal_switcher ~(hall_slug : string) ~(date_str : string) ~(active_mea
       let is_active = String.equal slug active_meal in
       let active_cls = if is_active then "active" else "" in
       let url = Printf.sprintf "/%s/%s/%s" hall_slug date_str slug in
-      Printf.sprintf {|<a href="%s" class="meal-tab %s" hx-get="%s" hx-target="#page-container" hx-push-url="true">%s</a>|}
-        url active_cls url label
+      Printf.sprintf {|<a href="%s" class="meal-tab %s">%s</a>|}
+        url active_cls label
     ) meals
   in
   Printf.sprintf {|<div class="meal-switcher">%s</div>|} (String.concat "" tabs)
@@ -226,7 +162,7 @@ let render_photo_slot (d : Types.dish) : string =
   let photo_url =
     match d.image_url with
     | Some u when u <> "" -> u
-    | _ -> Types.resolve_dish_photo d.name
+    | _ -> Photos.resolve_dish_photo d.name
   in
   Printf.sprintf {|
     <div class="dish-photo-slot">
@@ -457,7 +393,7 @@ let render_composite_station (sg : Types.station_group) (lead_dish : Types.dish)
   let photo_url =
     match lead_dish.image_url with
     | Some u when u <> "" -> u
-    | _ -> Types.resolve_dish_photo lead_dish.name
+    | _ -> Photos.resolve_dish_photo lead_dish.name
   in
   let table_html = render_ingredient_table ingredients in
   Printf.sprintf {|
@@ -523,21 +459,25 @@ let render_salad_station (sg : Types.station_group) : string =
 let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) ?(next_day_available = true) () : string =
   let header_html = Printf.sprintf {|
     <header class="app-header">
-      <div class="brand-row">
-        <a href="/" class="brand-title" hx-boost="true">
-          <span>🍽️ UofT Dining</span>
-        </a>
-        <span class="brand-badge">%s</span>
-      </div>
       %s
       %s
       %s
     </header>
-  |} (escape_html active_hall.short_name)
+  |}
     (render_halls_nav ~active_slug:menu.hall_slug ~date_str:menu.date_str ~meal_slug:menu.meal_slug)
     (render_day_switcher ~hall_slug:menu.hall_slug ~date_str:menu.date_str ~meal_slug:menu.meal_slug ~next_day_available ())
     (render_meal_switcher ~hall_slug:menu.hall_slug ~date_str:menu.date_str ~active_meal:menu.meal_slug)
   in
+  let disclaimer_html = {|
+    <div class="disclaimer-banner">
+      <span class="disclaimer-icon">ℹ️</span>
+      <div class="disclaimer-text">
+        Menus for University of Toronto dining halls. View the
+        <a href="https://fso.ueat.utoronto.ca/FSO/ServiceMenuReport" target="_blank" rel="noopener noreferrer">official UofT menu</a>.
+        This app has no responsibility for getting information wrong.
+      </div>
+    </div>
+  |} in
   let stations_html =
     if menu.stations = [] then
       Printf.sprintf {|
@@ -577,43 +517,11 @@ let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) 
     %s
     <main class="main-content">
       %s
+      %s
     </main>
-  |} header_html stations_html in
+  |} header_html disclaimer_html stations_html in
   let title = Printf.sprintf "%s %s Menu | %s" active_hall.short_name menu.meal_name menu.date_str in
   html_shell ~title ~content:body_content
-
-(** Render HTMX fragment for dish label *)
-let render_label_fragment (lbl : Types.dish_label) : string =
-  let allergens_html =
-    if lbl.allergens = [] then
-      {|<div style="font-size: 0.74rem; color: #16a34a; font-weight: 600; margin-bottom: 4px;">✓ No major allergens reported</div>|}
-    else
-      let badges = List.map (fun a -> Printf.sprintf {|<span class="badge badge-allergen">⚠️ Contains: %s</span>|} (escape_html a)) lbl.allergens in
-      Printf.sprintf {|<div style="margin-bottom: 6px; display:flex; flex-wrap:wrap; gap:4px;">%s</div>|} (String.concat "" badges)
-  in
-  let may_contain_html =
-    if lbl.may_contain = [] then ""
-    else
-      let badges = List.map (fun mc -> Printf.sprintf {|<span class="badge badge-neutral">May contain: %s</span>|} (escape_html mc)) lbl.may_contain in
-      Printf.sprintf {|<div style="margin-bottom: 6px; display:flex; flex-wrap:wrap; gap:4px;">%s</div>|} (String.concat "" badges)
-  in
-  let ingredients_html =
-    if lbl.ingredients = "" then ""
-    else
-      Printf.sprintf {|
-        <div class="ingredients-box" style="margin-top: 6px;">
-          <div class="ingredients-title">Ingredients:</div>
-          <div>%s</div>
-        </div>
-      |} (escape_html lbl.ingredients)
-  in
-  Printf.sprintf {|
-    <div class="label-loaded" style="margin-top: 8px;">
-      %s
-      %s
-      %s
-    </div>
-  |} allergens_html may_contain_html ingredients_html
 
 (** Render Frequency Analytics Page *)
 let render_frequency_page ~(entries : Frequency.occurrence_entry list) ~(total : int) : string =
@@ -635,11 +543,9 @@ let render_frequency_page ~(entries : Frequency.occurrence_entry list) ~(total :
   in
   let content = Printf.sprintf {|
     <header class="app-header">
-      <div class="brand-row">
-        <a href="/" class="brand-title" hx-boost="true">
-          <span>🍽️ UofT Dining</span>
-        </a>
-        <a href="/new-college/%s" class="brand-badge" style="text-decoration:none;">‹ Back to Menus</a>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:700; font-size:1.05rem; color:var(--primary-dark);">📊 Food Frequency Tracker</span>
+        <a href="/new-college/%s" class="jump-today-btn" style="text-decoration:none; padding:6px 12px;">‹ Back to Menus</a>
       </div>
     </header>
     <main class="main-content">

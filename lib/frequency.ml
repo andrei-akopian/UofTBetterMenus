@@ -1,4 +1,4 @@
-(** Food Item Frequency Tracker for future analytics *)
+(** Food Item Frequency Tracker for analytics *)
 
 type occurrence_entry = {
   name : string;
@@ -8,8 +8,6 @@ type occurrence_entry = {
 }
 
 let table : (string, occurrence_entry) Hashtbl.t = Hashtbl.create 500
-
-let mutex = Lwt_mutex.create ()
 
 let record_dish ~(name : string) ~(hall : string) ~(date : string) : unit =
   let key = String.trim (String.lowercase_ascii name) in
@@ -42,3 +40,23 @@ let get_top_frequent ~(limit : int) () : occurrence_entry list =
 
 let total_dishes_tracked () : int =
   Hashtbl.length table
+
+(** Hydrate frequency table by scanning cached menu files on startup *)
+let hydrate_from_cache ~(cache_menus_dir : string) : unit =
+  if Sys.file_exists cache_menus_dir && Sys.is_directory cache_menus_dir then (
+    let files = Sys.readdir cache_menus_dir in
+    Array.iter (fun fname ->
+      if String.ends_with ~suffix:".json" fname then (
+        let full_path = Filename.concat cache_menus_dir fname in
+        try
+          let json = Yojson.Safe.from_file full_path in
+          match Types.meal_menu_of_yojson json with
+          | Some m ->
+            List.iter (fun (sg : Types.station_group) ->
+              record_dishes ~hall:m.hall_slug ~date:m.date_str sg.dishes
+            ) m.stations
+          | None -> ()
+        with _ -> ()
+      )
+    ) files
+  )
