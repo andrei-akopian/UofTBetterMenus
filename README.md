@@ -11,10 +11,8 @@ A fast, minimalist, mobile-first dining hall menu application for University of 
   - **All 4 Dining Halls Exposed**: New College, Chestnut, CampusOne, and Oak House in a top segmented toggle bar. Switch dining halls in 1 tap.
   - **1-Click Day Switcher**: `< Prev Day` and `Next Day >` buttons for immediate date traversal.
   - **1-Click Meal Switcher**: Instant switching between Breakfast, Lunch, and Dinner.
-- **Thoughtful Information Architecture**:
-  - **Food Photo Ready**: Dedicated photo slots on dish cards with direct camera upload (`capture="environment"`) to build an in-person photo catalog.
-  - **Allergens Kept Prominent**: High-visibility color-coded badges for allergens (`Egg`, `Milk`, `Wheat/Gluten`, `Soy`, `Peanuts`, etc.) and dietary tags (`Vegetarian`, `Vegan`, `Halal`).
-  - **Nutritional Info Tucked Away**: Minimalist calorie badge on card, with full macro breakdown (Fat, Carbs, Protein, Sodium, etc.) and ingredient list collapsed behind a clean toggle.
+- **Allergens Kept Prominent**: High-visibility color-coded badges for allergens (`Egg`, `Milk`, `Wheat/Gluten`, `Soy`, `Peanuts`, etc.) and dietary tags (`Vegetarian`, `Vegan`, `Halal`).
+- **Nutritional Info Tucked Away**: Minimalist calorie badge on card, with full macro breakdown (Fat, Carbs, Protein, Sodium, etc.) and ingredient list collapsed behind a clean toggle.
 - **Clean URL Architecture**:
   - `/` (Blank path): Minimalist selector with 5 dining hall cards to prevent location confusion.
   - `/<hall>/<date>`: Infers meal and serves the day's menu.
@@ -67,13 +65,15 @@ Photos are stored locally in `static/photos/` and mapped via `static/photos/phot
 ## On-Disk Backend Caching
 
 Scraped menu data is persisted to disk under `cache/`:
+
 - `cache/dates/<YYYYMMDD>.json`: Location and meal hierarchy per date.
 - `cache/menus/<YYYYMMDD>_<hall>_<meal>.json`: Full dish list, stations, macro nutrients, and allergens.
 - `cache/labels/<menu_id>_<line_id>.json`: Cached nutrition facts and ingredients.
 
-Once a day's menu is scraped, subsequent visits load from disk in **< 1ms** with zero network overhead. Rescraping only occurs when a new day/meal is visited for the first time.
+Once a day's menu is scraped, subsequent visits load from disk in **&lt; 1ms** with zero network overhead. Rescraping only occurs when a new day/meal is visited for the first time.
 
 ### 1. Build and Run
+
 ```bash
 eval $(opam env --switch=default)
 dune build
@@ -83,6 +83,7 @@ dune exec bin/main.exe
 The server runs on `http://localhost:8080`.
 
 ### 2. Available Routes
+
 - `http://localhost:8080/` — Dining hall selector (Blank path)
 - `http://localhost:8080/new-college/2026-10-20/lunch` — New College Lunch
 - `http://localhost:8080/chestnut/2026-10-20/dinner` — Chestnut Dinner
@@ -98,7 +99,10 @@ The server runs on `http://localhost:8080`.
 - [ ] Create a food frequency analysis page.
 - [ ] Setup header with about and link to github repo.
 - [ ] double check tos to make sure scraping is permissible
-- [x] add a "no responsibilities" warning
+
+- [ ] improve warning message
+- [x] make top menu tighter and take up lace hight, mostly by restructuring the date selection area.
+
 - [ ] procure all the photos of different food.
 - [ ] Create detection for special / nonstandard events (like thanksgiving dinner etc.)
 - [ ] Set up docker packaging for future deployment to fly.io or railway.
@@ -106,3 +110,41 @@ The server runs on `http://localhost:8080`.
 - [ ] Scraper on a chron job that fetches newly published menus once a day
   - [ ] check whether menus for future days are finalized or change
 - [x] Remove htmx. A fully server side implementation is entirely possible by custom editing all relevant links.
+
+
+
+1. Date Traversal Limits:
+
+      • Forward Limit: Exactly +10 to +11 days into the future. Beyond day 11, residential dining halls publish 0 menus (only retail
+
+      cafeterias like MSB, Robarts, and Sidney Smith appear). Our is\_date\_available check correctly disables "Next Day" at this
+
+      exact boundary.
+
+      • Backward Limit: Historical menus are archived at least -365+ days into the past (tested back to October 2025). The only
+
+      historical gaps occur during summer term closures (July/August), where residences serve no meal plans.
+
+  2. Completeness of Pages:
+
+      • When a residential dining hall date is published, menus are 100% complete: 80 to 90 dishes across 7 to 9 stations per meal
+
+      (including dedicated Special Event stations discovered on Thanksgiving).
+
+      • All 12 macro/micronutrient columns and portion sizes (100g, Bowl, Slice) are consistently populated with numeric data.
+
+      • Weekend schemas (Saturday/Sunday) strictly adhere to \['Breakfast', 'Lunch', 'Dinner'\] without "Brunch" variations.
+
+  3. Two Key Vulnerabilities &amp; Open Decisions:
+
+      • Permanent Cache on Future Dates: api\_client.ml:236 currently caches all fetched menus to disk permanently. Because dining
+
+      services regularly update tentative menus 24–48 hours before service, visiting a future date (e.g. +7 days) will lock in
+
+      outdated menus forever. Recommendation: Add a 12-hour TTL for future dates (date &gt; today).
+
+      • Allergen Heuristic Accuracy: Our keyword inference in dietary.ml:7 avoids 85 sequential HTTP requests on page load, but live
+
+      tests against GetLabel confirmed that it misses non-obvious allergens (e.g. Sulphites on the pork entree). Recommendation:
+
+      Maintain the prominent disclaimer banner and consider asynchronous background caching of official GetLabel data. 

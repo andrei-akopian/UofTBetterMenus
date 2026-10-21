@@ -35,8 +35,8 @@ let get_today_str () : string =
 let clean_date (s : string) : string =
   String.concat "" (String.split_on_char '-' s)
 
-(** Get accurate relative day badge (Today, Tomorrow, Yesterday, or None) and formatted date *)
-let format_date_display (date_str : string) : string option * string * string =
+(** Get accurate relative day badge (Today, Tomorrow, Yesterday, or None) and formatted date components *)
+let format_date_display (date_str : string) : string option * string * string * string * int * string =
   let (y, m, d) = parse_date_components date_str in
   let tm = {
     Unix.tm_sec = 0; tm_min = 0; tm_hour = 12;
@@ -51,6 +51,11 @@ let format_date_display (date_str : string) : string option * string * string =
     match final_tm.tm_wday with
     | 0 -> "Sunday" | 1 -> "Monday" | 2 -> "Tuesday" | 3 -> "Wednesday"
     | 4 -> "Thursday" | 5 -> "Friday" | 6 -> "Saturday" | _ -> ""
+  in
+  let day_name_short =
+    match final_tm.tm_wday with
+    | 0 -> "Sun" | 1 -> "Mon" | 2 -> "Tue" | 3 -> "Wed"
+    | 4 -> "Thu" | 5 -> "Fri" | 6 -> "Sat" | _ -> ""
   in
   let month_name =
     match final_tm.tm_mon with
@@ -68,6 +73,5 @@ let format_date_display (date_str : string) : string option * string * string =
     else if c_target = clean_date yesterday_str then Some "Yesterday"
     else None
   in
-  let date_title = Printf.sprintf "%s, %s %d" day_name month_name final_tm.tm_mday in
   let year_str = Printf.sprintf "%d" (final_tm.tm_year + 1900) in
-  (rel_badge, date_title, year_str)
+  (rel_badge, day_name, day_name_short, month_name, final_tm.tm_mday, year_str)

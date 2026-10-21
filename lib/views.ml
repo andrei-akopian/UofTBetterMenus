@@ -91,7 +91,7 @@ let render_halls_nav ~(active_slug : string) ~(date_str : string) ~(meal_slug : 
 let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug : string) ?(next_day_available = true) () : string =
   let prev_date = shift_date date_str (-1) in
   let next_date = shift_date date_str 1 in
-  let (rel_badge_opt, day_main, year_str) = format_date_display date_str in
+  let (rel_badge_opt, day_name, day_short, month_name, day_num, year_str) = format_date_display date_str in
   let today = get_today_str () in
   let is_today = clean_date date_str = clean_date today in
   let prev_url = Printf.sprintf "/%s/%s/%s" hall_slug prev_date meal_slug in
@@ -108,7 +108,7 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
   let jump_today_row =
     if not is_today then
       Printf.sprintf {|
-        <div style="text-align: center; margin-top: 4px;">
+        <div class="jump-today-row">
           <a href="%s" class="jump-today-btn">
             ↩ Return to Today
           </a>
@@ -119,8 +119,12 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
   let next_btn_html =
     if next_day_available then
       Printf.sprintf {|
-        <a href="%s" class="day-btn">
-          Next Day ›
+        <a href="%s" class="day-btn day-btn-next" aria-label="Next day">
+          <span class="day-btn-label">
+            <span class="day-btn-text-full">Next Day</span>
+            <span class="day-btn-text-short">Next</span>
+          </span>
+          <span class="day-btn-arrow" aria-hidden="true">›</span>
         </a>
       |} next_url
     else
@@ -129,19 +133,24 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
   Printf.sprintf {|
     <div class="day-switcher-wrapper">
       <div class="day-switcher">
-        <a href="%s" class="day-btn">
-          ‹ Prev Day
+        <a href="%s" class="day-btn day-btn-prev" aria-label="Previous day">
+          <span class="day-btn-arrow" aria-hidden="true">‹</span>
+          <span class="day-btn-label">
+            <span class="day-btn-text-full">Prev Day</span>
+            <span class="day-btn-text-short">Prev</span>
+          </span>
         </a>
         <div class="day-indicator">
+          <span class="day-main-title">
+            <span class="day-name-full">%s</span><span class="day-name-short">%s</span>, %s %d, %s
+          </span>
           %s
-          <div class="day-main-title">%s</div>
-          <div class="day-sub">%s</div>
         </div>
         %s
       </div>
       %s
     </div>
-  |} prev_url badge_html day_main year_str next_btn_html jump_today_row
+  |} prev_url (escape_html day_name) (escape_html day_short) (escape_html month_name) day_num (escape_html year_str) badge_html next_btn_html jump_today_row
 
 (** Render Meal Switcher with 1-click Breakfast, Lunch, Dinner buttons *)
 let render_meal_switcher ~(hall_slug : string) ~(date_str : string) ~(active_meal : string) : string =
