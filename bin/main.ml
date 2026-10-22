@@ -28,6 +28,11 @@ let () =
     (* Static assets (CSS, photos, etc.) *)
     Dream.get "/static/**" (Dream.static "static");
 
+    (* Health check endpoint for orchestrators (Fly.io, Railway, Kubernetes) *)
+    Dream.get "/up" (fun _request -> Dream.respond "OK");
+    Dream.head "/up" (fun _request -> Dream.empty `OK);
+    Dream.head "/" (fun _request -> Dream.empty `OK);
+
     (* Blank path: returns minimalist landing page with dining hall selection buttons *)
     Dream.get "/" (fun _request ->
       let today = Date_utils.get_today_str () in

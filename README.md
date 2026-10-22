@@ -74,13 +74,33 @@ Once a day's menu is scraped, subsequent visits load from disk in **&lt; 1ms** w
 
 ### 1. Build and Run
 
+#### Native (Local Development)
 ```bash
 eval $(opam env --switch=default)
 dune build
 dune exec bin/main.exe
 ```
-
 The server runs on `http://localhost:8080`.
+
+#### Docker (Production Container)
+```bash
+docker build -t uoft-dining-menu .
+docker run -p 8080:8080 -v menu_cache:/app/cache uoft-dining-menu
+```
+
+Or using Docker Compose:
+```bash
+docker compose up -d
+```
+
+#### Deploying to Fly.io
+```bash
+# 1. (Optional) Create persistent volume for cache in Toronto (yyz) region
+fly volumes create menu_cache --region yyz --size 1
+
+# 2. Deploy application
+fly deploy
+```
 
 ### 2. Available Routes
 
@@ -93,22 +113,30 @@ The server runs on `http://localhost:8080`.
 
 ---
 
+## Production Deployment Architecture
+
+Unlike Python/Flask which requires external WSGI application servers (e.g. Gunicorn, uWSGI) to manage worker processes around Python's GIL, **OCaml Dream** is a compiled, asynchronous, event-driven native web server based on `Lwt` and `gluten`/`httpaf`.
+
+- **No Gunicorn/uWSGI needed:** Dream handles HTTP/1.1 and HTTP/2 connections, non-blocking I/O, routing, and high concurrency directly within a single native binary.
+- **Minimal memory footprint:** Typically ~20–30 MB RSS memory under load, making a 256MB micro VM (such as Fly.io's shared-cpu-1x) more than sufficient.
+- **Persistent Volume:** Cached menu JSONs and frequency statistics reside in `/app/cache`. Mounting a volume to `/app/cache` ensures scraped menus survive container redeployments and restarts.
+
+---
+
 ## TODO
 
-- [ ] Verify and double check the reverse engineering. Test how stable the assumptions are.
-- [ ] Create a food frequency analysis page.
+- [x] Verify and double check the reverse engineering. Test how stable the assumptions are.
+- [x] Create a food frequency analysis page.
 - [ ] Setup header with about and link to github repo.
 - [ ] double check tos to make sure scraping is permissible
-
-- [ ] improve warning message
+- [x] improve warning message
 - [x] make top menu tighter and take up lace hight, mostly by restructuring the date selection area.
-
 - [ ] procure all the photos of different food.
 - [ ] Create detection for special / nonstandard events (like thanksgiving dinner etc.)
-- [ ] Set up docker packaging for future deployment to fly.io or railway.
-- [ ] Move cache to persistent storage so it survives re-deployment
+- [x] Set up docker packaging for future deployment to fly.io or railway.
+- [x] Move cache to persistent storage so it survives re-deployment
 - [ ] Scraper on a chron job that fetches newly published menus once a day
-  - [ ] check whether menus for future days are finalized or change
+  - [x] check whether menus for future days are finalized or change (added 24h future cache refresh)
 - [x] Remove htmx. A fully server side implementation is entirely possible by custom editing all relevant links.
 
 

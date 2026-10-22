@@ -1,3 +1,5 @@
 (executable
  (name main)
+ (public_name menu_app)
+ (package menu_app)
  (libraries menu_lib dream))

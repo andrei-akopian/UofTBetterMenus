@@ -1,0 +1,11 @@
+_build
+.git
+.gitignore
+*.install
+*.swp
+*~
+.DS_Store
+Dockerfile*
+fly.toml
+README.md
+API_DOCUMENTATION.md

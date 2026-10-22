@@ -1,0 +1,16 @@
+services:
+  menu-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uoft-dining-menu
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=8080
+    volumes:
+      - menu_cache:/app/cache
+
+volumes:
+  menu_cache:
