@@ -1,7 +1,7 @@
 # fly.toml app configuration file for UofT Dining Menu
 # Generated for production deployment on Fly.io
 
-app = "uoft-dining-menu"
+app = "uoftbettermenus"
 primary_region = "yyz" # Toronto (closest to UofT campus and ueat.utoronto.ca API)
 
 [build]
@@ -34,11 +34,3 @@ primary_region = "yyz" # Toronto (closest to UofT campus and ueat.utoronto.ca AP
   memory = "256mb"
   cpu_kind = "shared"
   cpus = 1
-
-# Optional persistent volume to retain scraped menus and frequency tracking across deploys.
-# To provision, run: fly volumes create menu_cache --region yyz --size 1
-# If deploying without a persistent volume, you can comment out the [mounts] block below.
-[mounts]
-  source = "menu_cache"
-  destination = "/app/cache"
-  initial_size = "1GB"

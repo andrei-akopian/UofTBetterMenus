@@ -360,9 +360,6 @@ let scrape_remote_menu ~(hall_slug : string) ~(date_str : string) ~(meal_slug : 
     if stations <> [] then (
       let disk_file = disk_menu_path ~hall_slug ~date_str ~meal_slug in
       Hashtbl.replace menu_memory_cache (Printf.sprintf "%s:%s:%s" date_str hall_slug meal_slug) result;
-      List.iter (fun (sg : Types.station_group) ->
-        Frequency.record_dishes ~hall:hall_slug ~date:date_str sg.dishes
-      ) stations;
       (try Yojson.Safe.to_file disk_file (Types.meal_menu_to_yojson result) with _ -> ())
     );
     Lwt.return result
@@ -406,9 +403,6 @@ let fetch_meal_menu ~(hall_slug : string) ~(date_str : string) ~(meal_slug : str
           in
           let menu = { m with stations = sorted_stations } in
           Hashtbl.replace menu_memory_cache mem_key menu;
-          List.iter (fun (sg : Types.station_group) ->
-            Frequency.record_dishes ~hall:hall_slug ~date:date_str sg.dishes
-          ) sorted_stations;
           Lwt.return menu
         | None -> scrape_remote_menu ~hall_slug ~date_str ~meal_slug
       with _ -> scrape_remote_menu ~hall_slug ~date_str ~meal_slug

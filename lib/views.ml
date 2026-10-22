@@ -62,12 +62,6 @@ let render_landing_page ~(today : string) : string =
       <div class="landing-halls-grid">
         %s
       </div>
-
-      <div style="margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--border-subtle);">
-        <a href="/frequency" class="badge badge-neutral" style="text-decoration:none; padding: 6px 12px;">
-          📊 Food Frequency Analytics
-        </a>
-      </div>
     </div>
   |} halls_html in
   html_shell ~title:"Select Dining Hall | UofT Menu" ~content
@@ -625,52 +619,3 @@ let render_error_page
     </div>
   |} icon (escape_html heading) (escape_html message) (fst primary_link) (escape_html (snd primary_link)) sec_html in
   html_shell ~title ~content
-
-(** Render Frequency Analytics Page *)
-let render_frequency_page ~(entries : Frequency.occurrence_entry list) ~(total : int) : string =
-  let today = get_today_str () in
-  let rows_html =
-    if entries = [] then
-      {|<tr><td colspan="3" style="text-align:center; color: var(--text-muted);">No dish occurrences recorded yet. Browse menus to track dish appearances!</td></tr>|}
-    else
-      List.mapi (fun idx (e : Frequency.occurrence_entry) ->
-        Printf.sprintf {|
-          <tr>
-            <td><strong>#%d</strong> %s</td>
-            <td><span class="badge badge-neutral">%d times</span></td>
-            <td><span style="font-size:0.75rem; color:var(--text-secondary);">%s</span></td>
-          </tr>
-        |} (idx + 1) (escape_html e.name) e.count (escape_html (String.concat ", " e.halls))
-      ) entries
-      |> String.concat "\n"
-  in
-  let content = Printf.sprintf {|
-    <header class="app-header">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span style="font-weight:700; font-size:1.05rem; color:var(--primary-dark);">📊 Food Frequency Tracker</span>
-        <a href="/new-college/%s" class="jump-today-btn" style="text-decoration:none; padding:6px 12px;">‹ Back to Menus</a>
-      </div>
-    </header>
-    <main class="main-content">
-      <div style="margin-bottom: 16px;">
-        <h2 style="font-size: 1.3rem; font-weight: 700;">Food Item Frequency Tracker</h2>
-        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-          Tracking recurrence of dishes served across dining halls (%d unique items logged).
-        </p>
-      </div>
-
-      <table class="freq-table">
-        <thead>
-          <tr>
-            <th>Dish Name</th>
-            <th>Frequency</th>
-            <th>Dining Halls</th>
-          </tr>
-        </thead>
-        <tbody>
-          %s
-        </tbody>
-      </table>
-    </main>
-  |} today total rows_html in
-  html_shell ~title:"Food Frequency Analytics | UofT Dining" ~content

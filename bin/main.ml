@@ -19,9 +19,6 @@ let () =
   (* Initialize photo bindings on startup *)
   Photos.init_photos_from_file ();
 
-  (* Hydrate dish frequency tracker from on-disk cached menus *)
-  Frequency.hydrate_from_cache ~cache_menus_dir:Api_client.cache_menus_dir;
-
   Dream.run ~interface:"0.0.0.0" ~port
   @@ Dream.logger
   @@ Dream.router [
@@ -37,17 +34,6 @@ let () =
     Dream.get "/" (fun _request ->
       let today = Date_utils.get_today_str () in
       Dream.html (Views.render_landing_page ~today)
-    );
-
-    (* Food Item Frequency Tracker *)
-    Dream.get "/frequency" (fun _request ->
-      let entries = Frequency.get_top_frequent ~limit:50 () in
-      let total = Frequency.total_dishes_tracked () in
-      Dream.html (Views.render_frequency_page ~entries ~total)
-    );
-
-    Dream.get "/analytics" (fun request ->
-      Dream.redirect request "/frequency"
     );
 
     (* Short URL: /hall -> redirects to /hall/today/meal with 404 validation *)

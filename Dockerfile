@@ -54,17 +54,14 @@ COPY --chown=app:app --from=builder /home/opam/app/_build/default/bin/main.exe /
 # Copy static assets (CSS, SVG illustrations, photos metadata)
 COPY --chown=app:app --from=builder /home/opam/app/static /app/static
 
-# Copy pre-warmed cache
-COPY --chown=app:app --from=builder /home/opam/app/cache /app/cache
+# Prepare ephemeral (non-persistent) cache directory with app user ownership
+RUN mkdir -p /app/cache/dates /app/cache/menus /app/cache/labels && chown -R app:app /app
 
 USER app
 
 # Production environment defaults
 ENV PORT=8080
 EXPOSE 8080
-
-# Volume mount point for persistent caching across restarts and redeployments
-VOLUME ["/app/cache"]
 
 # Start Dream native web server directly
 CMD ["/app/menu_app"]

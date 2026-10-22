@@ -953,30 +953,6 @@ header.app-header {
   color: var(--text-secondary);
 }
 
-/* Analytics Frequency Table */
-.freq-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 16px;
-  background: #ffffff;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
-}
-
-.freq-table th, .freq-table td {
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.85rem;
-}
-
-.freq-table th {
-  background: var(--bg-card-subtle);
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
 /* Allergen Warning Banner */
 .allergen-warning-banner {
   background: #fffbeb;

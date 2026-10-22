@@ -16,9 +16,7 @@ A fast, minimalist, mobile-first dining hall menu application for University of 
 - **Clean URL Architecture**:
   - `/` (Blank path): Minimalist selector with 5 dining hall cards to prevent location confusion.
   - `/<hall>/<date>`: Infers meal and serves the day's menu.
-  - `/<hall>/<date>/<meal>`: Direct linkable, shareable URL updated seamlessly with HTMX (`hx-push-url="true"`).
-- **Food Occurrence Frequency Tracker**:
-  - `/frequency`: Log of dishes tracked across dining halls and dates, architected for future frequency analysis.
+  - `/<hall>/<date>/<meal>`: Direct linkable, shareable URL updated seamlessly with server-rendered navigation.
 
 ---
 
@@ -35,8 +33,7 @@ A fast, minimalist, mobile-first dining hall menu application for University of 
 │   ├── dune                # Library configuration
 │   ├── types.ml            # Core types (Dining halls, meals, dishes, nutrition)
 │   ├── api_client.ml       # FSO API reverse engineered client & binary parser
-│   ├── views.ml            # HTML templates, HTMX views, and mobile UI components
-│   └── frequency.ml        # Dish occurrence tracker for future analytics
+│   └── views.ml            # HTML templates and mobile UI components
 └── static/
     ├── style.css           # Mobile-first stylesheet
     ├── htmx.min.js         # HTMX library
@@ -109,7 +106,6 @@ fly deploy
 - `http://localhost:8080/chestnut/2026-10-20/dinner` — Chestnut Dinner
 - `http://localhost:8080/campus-one/2026-10-20/lunch` — CampusOne Lunch
 - `http://localhost:8080/oak-house/2026-10-20/lunch` — Oak House Lunch
-- `http://localhost:8080/frequency` — Food Item Frequency Tracker
 
 ---
 
@@ -119,14 +115,13 @@ Unlike Python/Flask which requires external WSGI application servers (e.g. Gunic
 
 - **No Gunicorn/uWSGI needed:** Dream handles HTTP/1.1 and HTTP/2 connections, non-blocking I/O, routing, and high concurrency directly within a single native binary.
 - **Minimal memory footprint:** Typically ~20–30 MB RSS memory under load, making a 256MB micro VM (such as Fly.io's shared-cpu-1x) more than sufficient.
-- **Persistent Volume:** Cached menu JSONs and frequency statistics reside in `/app/cache`. Mounting a volume to `/app/cache` ensures scraped menus survive container redeployments and restarts.
+- **Non-persistent Cache:** Cached menu JSONs reside in `/app/cache` on the container's ephemeral filesystem for high performance, refreshing naturally upon container redeployments.
 
 ---
 
 ## TODO
 
 - [x] Verify and double check the reverse engineering. Test how stable the assumptions are.
-- [x] Create a food frequency analysis page.
 - [ ] Setup header with about and link to github repo.
 - [ ] double check tos to make sure scraping is permissible
 - [x] improve warning message
