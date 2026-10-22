@@ -1,5 +1,7 @@
+# syntax=docker/dockerfile:1
 # ==============================================================================
 # Multi-Stage Production Dockerfile for UofT Dining Menu (OCaml + Dream)
+# Automatically builds for target architecture (e.g. linux/amd64 for Fly.io/cloud)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -23,7 +25,7 @@ COPY --chown=opam:opam . .
 RUN eval $(opam env) && dune build --profile release
 
 # ------------------------------------------------------------------------------
-# Stage 2: Minimal runtime image
+# Stage 2: Minimal runtime image (~40 MB compressed)
 # ------------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runner
 
@@ -46,17 +48,14 @@ WORKDIR /app
 # Create an unprivileged user for security
 RUN groupadd -r app && useradd -r -g app app
 
-# Copy compiled native binary from builder
-COPY --from=builder /home/opam/app/_build/default/bin/main.exe /app/menu_app
+# Copy compiled native binary directly with app user ownership (avoids duplicate layer)
+COPY --chown=app:app --from=builder /home/opam/app/_build/default/bin/main.exe /app/menu_app
 
 # Copy static assets (CSS, SVG illustrations, photos metadata)
-COPY --from=builder /home/opam/app/static /app/static
+COPY --chown=app:app --from=builder /home/opam/app/static /app/static
 
 # Copy pre-warmed cache
-COPY --from=builder /home/opam/app/cache /app/cache
-
-# Ensure app user has write permissions to the cache directory
-RUN chown -R app:app /app
+COPY --chown=app:app --from=builder /home/opam/app/cache /app/cache
 
 USER app
 
