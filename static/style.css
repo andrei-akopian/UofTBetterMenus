@@ -416,10 +416,10 @@ header.app-header {
   font-size: 0.80rem;
   color: var(--text-secondary);
   line-height: 1.35;
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 
-/* 1-Line Tall Ingredient / Item Table (Pan Station, Foodie Finds, Salad Stand) */
+/* 1-Line Tall Ingredient / Item Table (Pan Station, Foodie Finds, Salad Stand, Deli Bar) */
 .ingredient-table-container {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
@@ -440,6 +440,18 @@ header.app-header {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.ingredient-table-header .ing-col-name {
+  flex: 0 1 44%;
+  min-width: 120px;
+  max-width: 48%;
+}
+
+.ingredient-table-header .ing-col-allergens {
+  flex: 1 1 auto;
+  text-align: right;
+  justify-content: flex-end;
 }
 
 .ingredient-table-body {
@@ -484,44 +496,35 @@ header.app-header {
 }
 
 .ing-col-name {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 1 44%;
+  min-width: 120px;
+  max-width: 46%;
   font-size: 0.86rem;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 10px;
-}
-
-.ing-col-cal {
-  flex: 0 0 76px;
-  text-align: right;
-  font-size: 0.80rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  white-space: nowrap;
   padding-right: 12px;
 }
 
 .ing-col-allergens {
-  flex: 0 0 160px;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 4px;
-  overflow: hidden;
-  white-space: nowrap;
+  row-gap: 3px;
+  min-width: 0;
 }
 
 .ing-col-allergens .badge {
-  font-size: 0.68rem;
-  padding: 1px 6px;
-  max-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 0.70rem;
+  padding: 2px 7px;
   white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.25;
 }
 
 .ing-col-arrow {
@@ -559,29 +562,27 @@ header.app-header {
   }
 
   .ingredient-row-summary {
-    padding: 7px 10px;
+    padding: 6px 10px;
     min-height: 36px;
   }
 
   .ing-col-name {
+    flex: 0 1 40%;
+    min-width: 95px;
+    max-width: 44%;
     font-size: 0.80rem;
     padding-right: 6px;
   }
 
-  .ing-col-cal {
-    flex: 0 0 62px;
-    font-size: 0.76rem;
-    padding-right: 8px;
-  }
-
   .ing-col-allergens {
-    flex: 0 0 105px;
+    flex: 1 1 auto;
+    gap: 3px;
+    row-gap: 2px;
   }
 
   .ing-col-allergens .badge {
-    font-size: 0.65rem;
-    padding: 1px 4px;
-    max-width: 80px;
+    font-size: 0.66rem;
+    padding: 1px 5px;
   }
 
   .ing-col-arrow {

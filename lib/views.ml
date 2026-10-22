@@ -272,30 +272,6 @@ let render_collapsible_nutrition (d : Types.dish) : string =
     (escape_html n.fibre)
     (escape_html n.sat_fat)
 
-(** Render a single Dish Card (Serving size replaced with Allergens) *)
-let render_dish_card (d : Types.dish) : string =
-  let cal_badge =
-    match d.nutrition with
-    | Some n when n.calories <> "" && n.calories <> "-" ->
-      Printf.sprintf {|<span class="dish-calorie-badge">%s kcal</span>|} (escape_html n.calories)
-    | _ -> ""
-  in
-  Printf.sprintf {|
-    <div class="dish-card">
-      <div class="dish-card-body">
-        %s
-        <div class="dish-info">
-          <div class="dish-header-row">
-            <h3 class="dish-name">%s</h3>
-            %s
-          </div>
-          %s
-          %s
-        </div>
-      </div>
-    </div>
-  |} (render_photo_slot d) (escape_html d.name) cal_badge (render_allergens_in_place d) (render_collapsible_nutrition d)
-
 (** Check if a dish is a zero-cal / build-your-own header item *)
 let is_zero_cal_or_byo (d : Types.dish) : bool =
   let lower = String.lowercase_ascii d.name in
@@ -306,6 +282,27 @@ let is_zero_cal_or_byo (d : Types.dish) : bool =
   (match d.nutrition with
    | Some n -> n.calories = "0" || n.calories = "0.0" || n.calories = "-" || n.calories = ""
    | None -> true)
+
+(** Render a single Dish Card *)
+let render_dish_card (d : Types.dish) : string =
+  let allergens_html =
+    if is_zero_cal_or_byo d then ""
+    else render_allergens_in_place d
+  in
+  Printf.sprintf {|
+    <div class="dish-card">
+      <div class="dish-card-body">
+        %s
+        <div class="dish-info">
+          <div class="dish-header-row">
+            <h3 class="dish-name">%s</h3>
+          </div>
+          %s
+          %s
+        </div>
+      </div>
+    </div>
+  |} (render_photo_slot d) (escape_html d.name) allergens_html (render_collapsible_nutrition d)
 
 (** Check if a station is a composite Build-Your-Own station (Pan Station or Foodie Finds) *)
 let is_composite_station (sg : Types.station_group) : (Types.dish * Types.dish list) option =
@@ -323,14 +320,13 @@ let is_salad_station (sg : Types.station_group) : bool =
   let lower = String.lowercase_ascii sg.name in
   Types.contains_sub lower "salad" && not (Types.contains_sub lower "fruit")
 
+(** Check if a station is a Deli Bar / Sandwich section *)
+let is_deli_station (sg : Types.station_group) : bool =
+  let lower = String.lowercase_ascii sg.name in
+  Types.contains_sub lower "deli"
+
 (** Render a 1-line tall table row for an ingredient / salad item with click-to-expand nutrition *)
 let render_ingredient_table_row (d : Types.dish) : string =
-  let cal_str =
-    match d.nutrition with
-    | Some n when n.calories <> "" && n.calories <> "-" ->
-      Printf.sprintf "%s kcal" n.calories
-    | _ -> "-"
-  in
   let allergen_badges =
     if d.allergens <> [] then
       String.concat " " (List.map (fun a ->
@@ -380,13 +376,12 @@ let render_ingredient_table_row (d : Types.dish) : string =
     <details class="ingredient-table-row">
       <summary class="ingredient-row-summary">
         <span class="ing-col-name">%s</span>
-        <span class="ing-col-cal">%s</span>
         <span class="ing-col-allergens">%s%s</span>
         <span class="ing-col-arrow">▾</span>
       </summary>
       %s
     </details>
-  |} (escape_html d.name) (escape_html cal_str) allergen_badges tag_badges nutrition_details_html
+  |} (escape_html d.name) allergen_badges tag_badges nutrition_details_html
 
 (** Render a table of 1-line tall ingredients / items *)
 let render_ingredient_table (dishes : Types.dish list) : string =
@@ -395,7 +390,6 @@ let render_ingredient_table (dishes : Types.dish list) : string =
     <div class="ingredient-table-container">
       <div class="ingredient-table-header">
         <span class="ing-col-name">Ingredient / Option</span>
-        <span class="ing-col-cal">Calories</span>
         <span class="ing-col-allergens">Allergens & Dietary</span>
         <span class="ing-col-arrow"></span>
       </div>
@@ -429,7 +423,6 @@ let render_composite_station (sg : Types.station_group) (lead_dish : Types.dish)
             <span class="composite-badge">Custom Bowl / Dish</span>
             <h3 class="composite-lead-title">%s</h3>
             <p class="composite-lead-subtitle">Single dish with customizable ingredients. Tap any ingredient row below to view full nutrition:</p>
-            %s
           </div>
         </div>
       </div>
@@ -439,7 +432,6 @@ let render_composite_station (sg : Types.station_group) (lead_dish : Types.dish)
   |} (escape_html sg.name) (List.length ingredients)
     (escape_html photo_url) (escape_html lead_dish.name)
     (escape_html lead_dish.name)
-    (render_allergens_in_place lead_dish)
     table_html
 
 (** Render Salad Stand Section with a Single Picture Spot & 1-line Table of Salad Items *)
@@ -470,6 +462,36 @@ let render_salad_station (sg : Types.station_group) : string =
     </section>
   |} (escape_html sg.name) (List.length sg.dishes)
     salad_photo_url
+    table_html
+
+(** Render Deli Bar Section with a Single Picture Spot & 1-line Table of Deli Items *)
+let render_deli_station (sg : Types.station_group) : string =
+  let deli_photo_url = "/static/photos/egg_salad.svg" in
+  let table_html = render_ingredient_table sg.dishes in
+  Printf.sprintf {|
+    <section class="station-section deli-section">
+      <div class="station-header">
+        <span>%s</span>
+        <span class="station-count">%d items</span>
+      </div>
+
+      <div class="composite-lead-card deli-lead-card">
+        <div class="composite-lead-body">
+          <div class="dish-photo-slot composite-photo-slot">
+            <img src="%s" alt="Deli Bar" class="dish-thumb" loading="lazy">
+          </div>
+          <div class="composite-lead-info">
+            <span class="composite-badge">Fresh Deli Counter</span>
+            <h3 class="composite-lead-title">Deli Bar & Sandwiches</h3>
+            <p class="composite-lead-subtitle">Full selection of deli meats, sandwich fillings, cheeses, toppings, and condiments. Tap any row to view full nutrition:</p>
+          </div>
+        </div>
+      </div>
+
+      %s
+    </section>
+  |} (escape_html sg.name) (List.length sg.dishes)
+    deli_photo_url
     table_html
 
 (** Render complete Main Menu Page for a hall, date, and meal *)
@@ -541,6 +563,8 @@ let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) 
       List.map (fun (sg : Types.station_group) ->
         if is_salad_station sg then
           render_salad_station sg
+        else if is_deli_station sg then
+          render_deli_station sg
         else
           match is_composite_station sg with
           | Some (lead_dish, ingredients) ->
