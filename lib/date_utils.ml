@@ -35,6 +35,43 @@ let get_today_str () : string =
 let clean_date (s : string) : string =
   String.concat "" (String.split_on_char '-' s)
 
+(** Date bounds to protect upstream servers from arbitrary scraping or bot attacks *)
+let max_past_days = 14
+let max_future_days = 14
+
+let days_from_today (date_str : string) : int =
+  let (y, m, d) = parse_date_components date_str in
+  let tm = {
+    Unix.tm_sec = 0; tm_min = 0; tm_hour = 12;
+    tm_mday = d;
+    tm_mon = m - 1;
+    tm_year = y - 1900;
+    tm_wday = 0; tm_yday = 0; tm_isdst = false;
+  } in
+  let (target_sec, _) = Unix.mktime tm in
+  let (today_y, today_m, today_d) = parse_date_components (get_today_str ()) in
+  let today_tm = {
+    Unix.tm_sec = 0; tm_min = 0; tm_hour = 12;
+    tm_mday = today_d;
+    tm_mon = today_m - 1;
+    tm_year = today_y - 1900;
+    tm_wday = 0; tm_yday = 0; tm_isdst = false;
+  } in
+  let (today_sec, _) = Unix.mktime today_tm in
+  int_of_float ((target_sec -. today_sec) /. 86400.0)
+
+let is_date_in_allowed_range (date_str : string) : bool =
+  let diff = days_from_today date_str in
+  diff >= -max_past_days && diff <= max_future_days
+
+let is_past_limit_reached (date_str : string) : bool =
+  let diff = days_from_today date_str in
+  diff <= -max_past_days
+
+let is_future_limit_reached (date_str : string) : bool =
+  let diff = days_from_today date_str in
+  diff >= max_future_days
+
 (** Get accurate relative day badge (Today, Tomorrow, Yesterday, or None) and formatted date components *)
 let format_date_display (date_str : string) : string option * string * string * string * int * string =
   let (y, m, d) = parse_date_components date_str in

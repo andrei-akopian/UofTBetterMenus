@@ -9,6 +9,9 @@ let cache_dates_dir = Filename.concat cache_root "dates"
 let cache_menus_dir = Filename.concat cache_root "menus"
 let cache_labels_dir = Filename.concat cache_root "labels"
 
+(** Cache TTL: Future menus expire after 1 day (86400s) to pick up upstream adjustments *)
+let future_cache_ttl_seconds = 86400.0
+
 (** Ensure on-disk cache directories exist *)
 let ensure_cache_dirs () : unit =
   let make_dir d =
@@ -27,15 +30,19 @@ let menu_memory_cache : (string, Types.meal_menu) Hashtbl.t = Hashtbl.create 100
 let label_memory_cache : (string, Types.dish_label) Hashtbl.t = Hashtbl.create 500
 let date_units_memory_cache : (string, (string * (string * string) list) list) Hashtbl.t = Hashtbl.create 30
 
-(** Low-level HTTP GET using curl *)
+(** Low-level HTTP GET using curl with timeout *)
 let http_get (url : string) : string Lwt.t =
   let cmd = ("", [| "curl"; "-s"; "-L"; "--max-time"; "8"; url |]) in
-  Lwt_process.pread cmd
+  Lwt.catch
+    (fun () -> Lwt_process.pread cmd)
+    (fun _ -> Lwt.return "")
 
-(** Low-level HTTP POST using curl *)
+(** Low-level HTTP POST using curl with timeout *)
 let http_post (url : string) (form_data : string) : string Lwt.t =
   let cmd = ("", [| "curl"; "-s"; "-L"; "--max-time"; "8"; "-X"; "POST"; "-d"; form_data; url |]) in
-  Lwt_process.pread cmd
+  Lwt.catch
+    (fun () -> Lwt_process.pread cmd)
+    (fun _ -> Lwt.return "")
 
 (** Disk Cache Path Helpers *)
 let disk_menu_path ~(hall_slug : string) ~(date_str : string) ~(meal_slug : string) : string =
@@ -49,14 +56,26 @@ let disk_date_path (date_str : string) : string =
 let disk_label_path ~(menu_id : string) ~(line_id : string) : string =
   Filename.concat cache_labels_dir (Printf.sprintf "%s_%s.json" menu_id line_id)
 
-(** Fetch date hierarchy with persistent disk caching *)
+(** Check if cached file for future dates has exceeded the 1-day TTL *)
+let is_future_cache_expired (disk_file : string) (date_str : string) : bool =
+  if Date_utils.days_from_today date_str > 0 then
+    try
+      let stat = Unix.stat disk_file in
+      (Unix.time () -. stat.st_mtime) > future_cache_ttl_seconds
+    with _ -> false
+  else false
+
+(** Fetch date hierarchy with persistent disk caching and bounds protection *)
 let fetch_date_hierarchy (date_str_raw : string) : (string * (string * string) list) list Lwt.t =
   let clean_date = String.concat "" (String.split_on_char '-' date_str_raw) in
   match Hashtbl.find_opt date_units_memory_cache clean_date with
   | Some h -> Lwt.return h
   | None ->
     let disk_file = disk_date_path clean_date in
-    if Sys.file_exists disk_file then (
+    let has_valid_cache =
+      Sys.file_exists disk_file && not (is_future_cache_expired disk_file date_str_raw)
+    in
+    if has_valid_cache then (
       try
         let json = Yojson.Safe.from_file disk_file in
         let h = Devexpress.hierarchy_of_yojson json in
@@ -64,20 +83,41 @@ let fetch_date_hierarchy (date_str_raw : string) : (string * (string * string) l
         Lwt.return h
       with _ -> Lwt.return []
     ) else (
-      let url = Printf.sprintf "%s/GetDate?dt=%s" base_url clean_date in
-      http_get url >>= fun html ->
-      match Devexpress.extract_items_info_from_html html with
-      | Some b64 ->
-        let tokens = Devexpress.tokenize_items_info b64 in
-        let hierarchy = Devexpress.parse_location_hierarchy tokens in
-        Hashtbl.replace date_units_memory_cache clean_date hierarchy;
-        (try
-          let j = Devexpress.hierarchy_to_yojson hierarchy in
-          Yojson.Safe.to_file disk_file j
-        with _ -> ());
-        Lwt.return hierarchy
-      | None ->
-        Lwt.return []
+      (* Protection: if date is outside allowed range and not on disk, do NOT hit upstream network! *)
+      if not (Date_utils.is_date_in_allowed_range date_str_raw) then (
+        if Sys.file_exists disk_file then
+          try
+            let json = Yojson.Safe.from_file disk_file in
+            let h = Devexpress.hierarchy_of_yojson json in
+            Lwt.return h
+          with _ -> Lwt.return []
+        else
+          Lwt.return []
+      ) else (
+        let url = Printf.sprintf "%s/GetDate?dt=%s" base_url clean_date in
+        http_get url >>= fun html ->
+        match Devexpress.extract_items_info_from_html html with
+        | Some b64 ->
+          let tokens = Devexpress.tokenize_items_info b64 in
+          let hierarchy = Devexpress.parse_location_hierarchy tokens in
+          Hashtbl.replace date_units_memory_cache clean_date hierarchy;
+          (try
+            let j = Devexpress.hierarchy_to_yojson hierarchy in
+            Yojson.Safe.to_file disk_file j
+          with _ -> ());
+          Lwt.return hierarchy
+        | None ->
+          (* If upstream fetch failed or returned format without itemsInfo, fallback to disk cache if available *)
+          if Sys.file_exists disk_file then
+            try
+              let json = Yojson.Safe.from_file disk_file in
+              let h = Devexpress.hierarchy_of_yojson json in
+              Hashtbl.replace date_units_memory_cache clean_date h;
+              Lwt.return h
+            with _ -> Lwt.return []
+          else
+            Lwt.return []
+      )
     )
 
 let clean_badge_text (s : string) : string =
@@ -298,22 +338,67 @@ let is_date_available ~(hall_slug : string) ~(date_str : string) : bool Lwt.t =
       in
       Lwt.return has_hall
 
-(** Fetch full meal menu with PERSISTENT DISK CACHING.
-    If cached on disk, loads in < 1ms with NO network requests.
-    Only scrapes when a new day/meal is not on disk!
+(** Scrape a meal menu directly from upstream *)
+let scrape_remote_menu ~(hall_slug : string) ~(date_str : string) ~(meal_slug : string) : Types.meal_menu Lwt.t =
+  find_menu_uuid ~date_str ~hall_slug ~meal_slug >>= function
+  | None ->
+    let empty_menu = {
+      Types.hall_slug; date_str; meal_slug;
+      meal_name = Types.meal_name_of_slug meal_slug;
+      menu_id = ""; stations = [];
+    } in
+    Lwt.return empty_menu
+  | Some (actual_meal_name, menu_uuid) ->
+    let url = Printf.sprintf "%s/GetReport/%s" base_url menu_uuid in
+    http_post url "allergens=&tags=&maycontain=" >>= fun html ->
+    let stations = parse_report_html html in
+    let result = {
+      Types.hall_slug; date_str; meal_slug;
+      meal_name = actual_meal_name; menu_id = menu_uuid;
+      stations;
+    } in
+    if stations <> [] then (
+      let disk_file = disk_menu_path ~hall_slug ~date_str ~meal_slug in
+      Hashtbl.replace menu_memory_cache (Printf.sprintf "%s:%s:%s" date_str hall_slug meal_slug) result;
+      List.iter (fun (sg : Types.station_group) ->
+        Frequency.record_dishes ~hall:hall_slug ~date:date_str sg.dishes
+      ) stations;
+      (try Yojson.Safe.to_file disk_file (Types.meal_menu_to_yojson result) with _ -> ())
+    );
+    Lwt.return result
+
+(** Fetch full meal menu with:
+    1. Bounds enforcement against arbitrary backward/forward scraping
+    2. 1-day TTL re-scraping for future dates
+    3. Permanent caching for past/today dates
+    4. Safe fallback to disk cache if upstream fails
 *)
 let fetch_meal_menu ~(hall_slug : string) ~(date_str : string) ~(meal_slug : string) : Types.meal_menu Lwt.t =
   let mem_key = Printf.sprintf "%s:%s:%s" date_str hall_slug meal_slug in
+  let disk_file = disk_menu_path ~hall_slug ~date_str ~meal_slug in
+
+  (* 1. Check in-memory cache first *)
   match Hashtbl.find_opt menu_memory_cache mem_key with
-  | Some m -> Lwt.return m
-  | None ->
-    let disk_file = disk_menu_path ~hall_slug ~date_str ~meal_slug in
-    if Sys.file_exists disk_file then (
+  | Some m when not (is_future_cache_expired disk_file date_str) -> Lwt.return m
+  | _ ->
+    (* 2. Check backward/forward archive bounds protection *)
+    let in_bounds = Date_utils.is_date_in_allowed_range date_str in
+    let on_disk = Sys.file_exists disk_file in
+
+    if not in_bounds && not on_disk then (
+      (* Outside allowed bounds and not previously cached: return empty menu with 0 network calls! *)
+      let empty_menu = {
+        Types.hall_slug; date_str; meal_slug;
+        meal_name = Types.meal_name_of_slug meal_slug;
+        menu_id = ""; stations = [];
+      } in
+      Lwt.return empty_menu
+    ) else if on_disk && not (is_future_cache_expired disk_file date_str) then (
+      (* Valid cache on disk: load immediately *)
       try
         let json = Yojson.Safe.from_file disk_file in
         match Types.meal_menu_of_yojson json with
         | Some m ->
-          (* Re-sort stations in case priority function updated *)
           let sorted_stations =
             List.sort (fun (a : Types.station_group) (b : Types.station_group) ->
               compare (Types.station_priority a.name) (Types.station_priority b.name)
@@ -325,55 +410,44 @@ let fetch_meal_menu ~(hall_slug : string) ~(date_str : string) ~(meal_slug : str
             Frequency.record_dishes ~hall:hall_slug ~date:date_str sg.dishes
           ) sorted_stations;
           Lwt.return menu
-        | None -> Lwt.fail (Failure "Failed to parse cached menu")
-      with _ ->
-        (* If corrupted, scrape again *)
-        find_menu_uuid ~date_str ~hall_slug ~meal_slug >>= function
-        | None ->
-          let empty_menu = {
-            Types.hall_slug; date_str; meal_slug;
-            meal_name = Types.meal_name_of_slug meal_slug;
-            menu_id = ""; stations = [];
-          } in
-          Lwt.return empty_menu
-        | Some (actual_meal_name, menu_uuid) ->
-          let url = Printf.sprintf "%s/GetReport/%s" base_url menu_uuid in
-          http_post url "allergens=&tags=&maycontain=" >>= fun html ->
-          let stations = parse_report_html html in
-          let result = {
-            Types.hall_slug; date_str; meal_slug;
-            meal_name = actual_meal_name; menu_id = menu_uuid;
-            stations;
-          } in
-          Hashtbl.replace menu_memory_cache mem_key result;
-          List.iter (fun (sg : Types.station_group) ->
-            Frequency.record_dishes ~hall:hall_slug ~date:date_str sg.dishes
-          ) stations;
-          (try Yojson.Safe.to_file disk_file (Types.meal_menu_to_yojson result) with _ -> ());
-          Lwt.return result
+        | None -> scrape_remote_menu ~hall_slug ~date_str ~meal_slug
+      with _ -> scrape_remote_menu ~hall_slug ~date_str ~meal_slug
+    ) else if on_disk && is_future_cache_expired disk_file date_str then (
+      (* Future cache is > 1 day old: attempt refresh, with graceful fallback to disk on error *)
+      Lwt.catch
+        (fun () ->
+          scrape_remote_menu ~hall_slug ~date_str ~meal_slug >>= fun fresh_menu ->
+          if fresh_menu.stations <> [] then Lwt.return fresh_menu
+          else
+            (* Upstream returned empty or failed, use previous cached version *)
+            let json = Yojson.Safe.from_file disk_file in
+            match Types.meal_menu_of_yojson json with
+            | Some m -> Lwt.return m
+            | None -> Lwt.return fresh_menu
+        )
+        (fun _ ->
+          (* Network failed: fallback to existing cached version *)
+          try
+            let json = Yojson.Safe.from_file disk_file in
+            match Types.meal_menu_of_yojson json with
+            | Some m -> Lwt.return m
+            | None -> scrape_remote_menu ~hall_slug ~date_str ~meal_slug
+          with _ -> scrape_remote_menu ~hall_slug ~date_str ~meal_slug
+        )
     ) else (
-      (* Not on disk: scrape once and persist *)
-      find_menu_uuid ~date_str ~hall_slug ~meal_slug >>= function
-      | None ->
-        let empty_menu = {
-          Types.hall_slug; date_str; meal_slug;
-          meal_name = Types.meal_name_of_slug meal_slug;
-          menu_id = ""; stations = [];
-        } in
-        Lwt.return empty_menu
-      | Some (actual_meal_name, menu_uuid) ->
-        let url = Printf.sprintf "%s/GetReport/%s" base_url menu_uuid in
-        http_post url "allergens=&tags=&maycontain=" >>= fun html ->
-        let stations = parse_report_html html in
-        List.iter (fun (sg : Types.station_group) ->
-          Frequency.record_dishes ~hall:hall_slug ~date:date_str sg.dishes
-        ) stations;
-        let result = {
-          Types.hall_slug; date_str; meal_slug;
-          meal_name = actual_meal_name; menu_id = menu_uuid;
-          stations;
-        } in
-        Hashtbl.replace menu_memory_cache mem_key result;
-        (try Yojson.Safe.to_file disk_file (Types.meal_menu_to_yojson result) with _ -> ());
-        Lwt.return result
+      (* Not on disk, but in bounds: scrape from upstream *)
+      scrape_remote_menu ~hall_slug ~date_str ~meal_slug
     )
+
+(** Health heuristic check to verify upstream FSO layout hasn't broken *)
+let check_scraper_health () : bool Lwt.t =
+  let today = Date_utils.get_today_str () in
+  let clean = Date_utils.clean_date today in
+  let url = Printf.sprintf "%s/GetDate?dt=%s" base_url clean in
+  Lwt.catch
+    (fun () ->
+      http_get url >>= fun html ->
+      match Devexpress.extract_items_info_from_html html with
+      | Some _ -> Lwt.return true
+      | None -> Lwt.return false)
+    (fun _ -> Lwt.return false)

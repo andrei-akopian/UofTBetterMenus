@@ -87,8 +87,8 @@ let render_halls_nav ~(active_slug : string) ~(date_str : string) ~(meal_slug : 
     (String.concat "" tabs)
 
 (** Render Day Switcher with 1-click Forward and Back buttons & accurate Today/Tomorrow indicators.
-    Hides "Next Day" button if the next day is unavailable. *)
-let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug : string) ?(next_day_available = true) () : string =
+    Hides buttons if date is outside archive bounds. *)
+let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug : string) ?(prev_day_available = true) ?(next_day_available = true) () : string =
   let prev_date = shift_date date_str (-1) in
   let next_date = shift_date date_str 1 in
   let (rel_badge_opt, day_name, day_short, month_name, day_num, year_str) = format_date_display date_str in
@@ -116,6 +116,20 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
       |} today_url
     else ""
   in
+  let prev_btn_html =
+    if prev_day_available then
+      Printf.sprintf {|
+        <a href="%s" class="day-btn day-btn-prev" aria-label="Previous day">
+          <span class="day-btn-arrow" aria-hidden="true">‹</span>
+          <span class="day-btn-label">
+            <span class="day-btn-text-full">Prev Day</span>
+            <span class="day-btn-text-short">Prev</span>
+          </span>
+        </a>
+      |} prev_url
+    else
+      {|<span class="day-btn-placeholder" aria-hidden="true"></span>|}
+  in
   let next_btn_html =
     if next_day_available then
       Printf.sprintf {|
@@ -133,13 +147,7 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
   Printf.sprintf {|
     <div class="day-switcher-wrapper">
       <div class="day-switcher">
-        <a href="%s" class="day-btn day-btn-prev" aria-label="Previous day">
-          <span class="day-btn-arrow" aria-hidden="true">‹</span>
-          <span class="day-btn-label">
-            <span class="day-btn-text-full">Prev Day</span>
-            <span class="day-btn-text-short">Prev</span>
-          </span>
-        </a>
+        %s
         <div class="day-indicator">
           <span class="day-main-title">
             <span class="day-name-full">%s</span><span class="day-name-short">%s</span>, %s %d, %s
@@ -150,7 +158,7 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
       </div>
       %s
     </div>
-  |} prev_url (escape_html day_name) (escape_html day_short) (escape_html month_name) day_num (escape_html year_str) badge_html next_btn_html jump_today_row
+  |} prev_btn_html (escape_html day_name) (escape_html day_short) (escape_html month_name) day_num (escape_html year_str) badge_html next_btn_html jump_today_row
 
 (** Render Meal Switcher with 1-click Breakfast, Lunch, Dinner buttons *)
 let render_meal_switcher ~(hall_slug : string) ~(date_str : string) ~(active_meal : string) : string =
@@ -179,13 +187,13 @@ let render_photo_slot (d : Types.dish) : string =
     </div>
   |} (escape_html photo_url) (escape_html d.name)
 
-(** Render Allergens and Dietary Tags in place of the uninteresting serving size *)
+(** Render Allergens and Dietary Tags with explicit estimation note *)
 let render_allergens_in_place (d : Types.dish) : string =
   let allergen_badges =
     if d.allergens <> [] then
-      [ Printf.sprintf {|<span class="badge badge-allergen">⚠️ Contains: %s</span>|} (escape_html (String.concat ", " d.allergens)) ]
+      [ Printf.sprintf {|<span class="badge badge-allergen" title="Estimated from recipe description — always verify with staff for allergies">⚠️ Est. Contains: %s</span>|} (escape_html (String.concat ", " d.allergens)) ]
     else
-      [ {|<span class="badge badge-safe">✓ No major allergens</span>|} ]
+      [ {|<span class="badge badge-safe">✓ No common allergens flagged</span>|} ]
   in
   let tag_badges =
     List.map (fun t ->
@@ -465,7 +473,7 @@ let render_salad_station (sg : Types.station_group) : string =
     table_html
 
 (** Render complete Main Menu Page for a hall, date, and meal *)
-let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) ?(next_day_available = true) () : string =
+let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) ?(prev_day_available = true) ?(next_day_available = true) () : string =
   let header_html = Printf.sprintf {|
     <header class="app-header">
       %s
@@ -474,30 +482,61 @@ let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) 
     </header>
   |}
     (render_halls_nav ~active_slug:menu.hall_slug ~date_str:menu.date_str ~meal_slug:menu.meal_slug)
-    (render_day_switcher ~hall_slug:menu.hall_slug ~date_str:menu.date_str ~meal_slug:menu.meal_slug ~next_day_available ())
+    (render_day_switcher ~hall_slug:menu.hall_slug ~date_str:menu.date_str ~meal_slug:menu.meal_slug ~prev_day_available ~next_day_available ())
     (render_meal_switcher ~hall_slug:menu.hall_slug ~date_str:menu.date_str ~active_meal:menu.meal_slug)
   in
   let disclaimer_html = {|
-    <div class="disclaimer-banner">
-      <span class="disclaimer-icon">ℹ️</span>
+    <div class="disclaimer-banner allergen-warning-banner">
+      <span class="disclaimer-icon">⚠️</span>
       <div class="disclaimer-text">
-        Menus for University of Toronto dining halls. View the
-        <a href="https://fso.ueat.utoronto.ca/FSO/ServiceMenuReport" target="_blank" rel="noopener noreferrer">official UofT menu</a>.
-        This app has no responsibility for getting information wrong.
+        <strong>Allergen &amp; Dietary Notice:</strong> Allergen tags on dish cards are <em>estimated from food names</em> and do not account for cross-contact, prep changes, or hidden allergens (e.g. sulphites, trace nuts, sesame).
+        Always verify with dining hall staff if you have severe allergies. Review the
+        <a href="https://fso.ueat.utoronto.ca/FSO/ServiceMenuReport" target="_blank" rel="noopener noreferrer">official UofT menu labels</a>.
       </div>
     </div>
   |} in
+  let is_summer =
+    let (_, m, _) = Date_utils.parse_date_components menu.date_str in
+    m >= 5 && m <= 8
+  in
   let stations_html =
     if menu.stations = [] then
-      Printf.sprintf {|
-        <div class="empty-notice" style="margin-top: 24px;">
-          <h3>No Menu Scheduled</h3>
-          <p style="margin-top: 6px; font-size: 0.85rem;">No published meal items found for %s on this date.</p>
-          <p style="margin-top: 12px;">
-            <a href="/%s/%s" class="jump-today-btn" style="display:inline-flex; padding: 6px 14px;">View Today's Menu</a>
-          </p>
-        </div>
-      |} (escape_html menu.meal_name) menu.hall_slug (get_today_str ())
+      if is_summer then
+        Printf.sprintf {|
+          <div class="empty-notice summer-notice" style="margin-top: 24px;">
+            <div style="font-size: 2.2rem; margin-bottom: 8px;">☀️</div>
+            <h3 style="font-size: 1.15rem; font-weight: 700;">Summer Term — Dining Hall Inactive</h3>
+            <p style="margin-top: 6px; font-size: 0.85rem; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.45;">
+              %s pauses regular residence dining plan operations during the summer term (May to August).
+            </p>
+            <p style="margin-top: 14px;">
+              <a href="/%s/%s" class="jump-today-btn" style="display:inline-flex; padding: 6px 14px;">View Today's Active Menu</a>
+            </p>
+          </div>
+        |} (escape_html active_hall.name) menu.hall_slug (get_today_str ())
+      else if not (Date_utils.is_date_in_allowed_range menu.date_str) then
+        Printf.sprintf {|
+          <div class="empty-notice" style="margin-top: 24px;">
+            <div style="font-size: 2.2rem; margin-bottom: 8px;">📅</div>
+            <h3 style="font-size: 1.15rem; font-weight: 700;">Date Outside Archive Bounds</h3>
+            <p style="margin-top: 6px; font-size: 0.85rem; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.45;">
+              To protect university services, online menu lookups are limited to the past 14 days and upcoming 14 days.
+            </p>
+            <p style="margin-top: 14px;">
+              <a href="/%s/%s" class="jump-today-btn" style="display:inline-flex; padding: 6px 14px;">View Today's Active Menu</a>
+            </p>
+          </div>
+        |} menu.hall_slug (get_today_str ())
+      else
+        Printf.sprintf {|
+          <div class="empty-notice" style="margin-top: 24px;">
+            <h3>No Menu Scheduled</h3>
+            <p style="margin-top: 6px; font-size: 0.85rem;">No published meal items found for %s on this date.</p>
+            <p style="margin-top: 12px;">
+              <a href="/%s/%s" class="jump-today-btn" style="display:inline-flex; padding: 6px 14px;">View Today's Menu</a>
+            </p>
+          </div>
+        |} (escape_html menu.meal_name) menu.hall_slug (get_today_str ())
     else
       List.map (fun (sg : Types.station_group) ->
         if is_salad_station sg then
@@ -531,6 +570,37 @@ let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) 
   |} header_html disclaimer_html stations_html in
   let title = Printf.sprintf "%s %s Menu | %s" active_hall.short_name menu.meal_name menu.date_str in
   html_shell ~title ~content:body_content
+
+(** Render custom 404 / 503 fallback and error pages *)
+let render_error_page
+    ~(title : string)
+    ~(icon : string)
+    ~(heading : string)
+    ~(message : string)
+    ?(primary_link = ("/", "Browse All Dining Halls"))
+    ?(secondary_link : (string * string) option = None)
+    () : string =
+  let sec_html =
+    match secondary_link with
+    | Some (url, label) ->
+      Printf.sprintf {|<a href="%s" class="btn-secondary">%s</a>|} url (escape_html label)
+    | None -> ""
+  in
+  let content = Printf.sprintf {|
+    <div class="error-page-container">
+      <div class="error-page-icon">%s</div>
+      <h1 class="error-page-title">%s</h1>
+      <p class="error-page-message">%s</p>
+      <div class="error-page-actions">
+        <a href="%s" class="btn-primary">%s</a>
+        %s
+        <a href="https://fso.ueat.utoronto.ca/FSO/ServiceMenuReport" target="_blank" rel="noopener noreferrer" class="error-page-fso-link">
+          Visit Official UofT Food Services Portal ↗
+        </a>
+      </div>
+    </div>
+  |} icon (escape_html heading) (escape_html message) (fst primary_link) (escape_html (snd primary_link)) sec_html in
+  html_shell ~title ~content
 
 (** Render Frequency Analytics Page *)
 let render_frequency_page ~(entries : Frequency.occurrence_entry list) ~(total : int) : string =

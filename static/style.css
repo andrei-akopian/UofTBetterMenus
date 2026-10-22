@@ -975,3 +975,111 @@ header.app-header {
   font-weight: 600;
   color: var(--text-secondary);
 }
+
+/* Allergen Warning Banner */
+.allergen-warning-banner {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.allergen-warning-banner .disclaimer-icon {
+  font-size: 1rem;
+}
+
+.allergen-warning-banner a {
+  color: #b45309;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Custom 404 & Heuristic Fallback / Error Pages */
+.error-page-container {
+  max-width: 500px;
+  margin: 48px auto;
+  padding: 32px 24px;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.error-page-icon {
+  font-size: 3rem;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+
+.error-page-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--primary-dark);
+  margin-bottom: 10px;
+}
+
+.error-page-message {
+  font-size: 0.90rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.error-page-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 22px;
+  background: var(--primary-dark);
+  color: #ffffff;
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.88rem;
+  transition: all 0.15s ease;
+  min-height: 42px;
+}
+
+.btn-primary:hover {
+  background: #334155;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 18px;
+  background: var(--bg-card-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.82rem;
+  border: 1px solid var(--border-subtle);
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background: #e2e8f0;
+  color: var(--text-primary);
+}
+
+.error-page-fso-link {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 10px;
+  text-decoration: underline;
+}
+
+.summer-notice {
+  border-color: #fde68a;
+  background: #fffdf5;
+}
