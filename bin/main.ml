@@ -114,18 +114,28 @@ let () =
           Lwt.catch
             (fun () ->
               let prev_day_available = not (Date_utils.is_past_limit_reached date_str) in
-              let next_date = Date_utils.shift_date date_str 1 in
+              let next_day_available = not (Date_utils.is_future_limit_reached date_str) in
               Api_client.fetch_meal_menu ~hall_slug ~date_str ~meal_slug >>= fun menu ->
-              Api_client.is_date_available ~hall_slug ~date_str:next_date >>= fun next_day_available ->
               Dream.html (Views.render_main_menu ~menu ~active_hall ~prev_day_available ~next_day_available ()))
             (fun _exn ->
+              let today = Date_utils.get_today_str () in
+              let is_today = Date_utils.clean_date date_str = Date_utils.clean_date today in
+              let primary_link =
+                (Printf.sprintf "/%s/%s/%s" hall_slug date_str meal_slug, "Retry Menu")
+              in
+              let secondary_link =
+                if not is_today then
+                  Some (Printf.sprintf "/%s/%s/%s" hall_slug today meal_slug, "Return to Today's Menu")
+                else None
+              in
               Dream.respond ~status:`Service_Unavailable
                 (Views.render_error_page
                   ~title:"Menu Service Unavailable | UofT Dining"
                   ~icon:"📡"
                   ~heading:"Menu Service Temporarily Unavailable"
                   ~message:"The official UofT Food Services Online portal is temporarily unreachable or undergoing maintenance. Please try again in a few moments."
-                  ~primary_link:(Printf.sprintf "/%s/%s/%s" hall_slug (Date_utils.get_today_str ()) meal_slug, "Retry Today's Menu")
+                  ~primary_link
+                  ~secondary_link
                   ()))
     );
   ]

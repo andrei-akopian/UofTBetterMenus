@@ -488,6 +488,207 @@ let render_deli_station (sg : Types.station_group) : string =
     deli_photo_url
     table_html
 
+let render_empty_menu_notice ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) : string =
+  let today_str = get_today_str () in
+  let is_today = clean_date menu.date_str = clean_date today_str in
+  let diff = Date_utils.days_from_today menu.date_str in
+  let (_, day_name, _, month_name, day_num, _) = format_date_display menu.date_str in
+  let is_summer =
+    let (_, m, _) = Date_utils.parse_date_components menu.date_str in
+    m >= 5 && m <= 8
+  in
+  let other_meals_html =
+    if menu.available_meals <> [] then
+      let meal_links =
+        List.map (fun m_name ->
+          let slug = Types.meal_slug_of_name m_name in
+          let url = Printf.sprintf "/%s/%s/%s" menu.hall_slug menu.date_str slug in
+          Printf.sprintf {|<a href="%s" class="available-meal-pill">🍽️ View %s</a>|} url (escape_html m_name)
+        ) menu.available_meals
+        |> String.concat "\n"
+      in
+      Printf.sprintf {|
+        <div class="available-meals-suggestion">
+          <p class="available-meals-label">Other meals posted for this date:</p>
+          <div class="available-meals-pills">%s</div>
+        </div>
+      |} meal_links
+    else ""
+  in
+  let other_halls_html =
+    let alt_halls = List.filter (fun (h : Types.hall_info) -> h.slug <> menu.hall_slug) Types.dining_halls in
+    let hall_links =
+      List.map (fun (h : Types.hall_info) ->
+        let url = Printf.sprintf "/%s/%s/%s" h.slug menu.date_str menu.meal_slug in
+        Printf.sprintf {|<a href="%s" class="alt-hall-pill">%s</a>|} url (escape_html h.short_name)
+      ) alt_halls
+      |> String.concat "\n"
+    in
+    Printf.sprintf {|
+      <div class="alt-halls-suggestion">
+        <span class="alt-halls-label">Check other dining halls:</span>
+        <div class="alt-halls-pills">%s</div>
+      </div>
+    |} hall_links
+  in
+  if is_summer then
+    let action_btn =
+      if not is_today then
+        Printf.sprintf {|<a href="/%s/%s/%s" class="jump-today-btn">↩ Return to Today</a>|} menu.hall_slug today_str menu.meal_slug
+      else
+        {|<a href="https://fso.ueat.utoronto.ca/FSO/ServiceMenuReport" target="_blank" rel="noopener noreferrer" class="btn-primary-action">Check Official Portal ↗</a>|}
+    in
+    Printf.sprintf {|
+      <div class="empty-notice summer-notice" style="margin-top: 24px;">
+        <div class="empty-notice-icon">☀️</div>
+        <h3 class="empty-notice-title">Summer Term — Dining Hall Inactive</h3>
+        <p class="empty-notice-desc">
+          %s pauses regular residence dining plan operations during the summer term (May to August).
+        </p>
+        <div class="empty-notice-actions">
+          %s
+        </div>
+        %s
+      </div>
+    |} (escape_html active_hall.name) action_btn other_halls_html
+  else if not (Date_utils.is_date_in_allowed_range menu.date_str) then
+    Printf.sprintf {|
+      <div class="empty-notice" style="margin-top: 24px;">
+        <div class="empty-notice-icon">📅</div>
+        <h3 class="empty-notice-title">Date Outside Archive Bounds</h3>
+        <p class="empty-notice-desc">
+          To protect university services, online menu lookups are limited to the past 14 days and upcoming 14 days.
+        </p>
+        <div class="empty-notice-actions">
+          <a href="/%s/%s/%s" class="jump-today-btn">↩ Return to Today's Menu</a>
+        </div>
+      </div>
+    |} menu.hall_slug today_str menu.meal_slug
+  else if is_today then
+    Printf.sprintf {|
+      <div class="empty-notice today-missing-notice" style="margin-top: 24px;">
+        <div class="empty-notice-icon">⏳</div>
+        <h3 class="empty-notice-title">Today's %s Menu Not Yet Published</h3>
+        <p class="empty-notice-desc">
+          %s has not released the %s menu for today (%s, %s %d) yet. Dining halls sometimes publish schedules late or update menus closer to meal service.
+        </p>
+        <p class="empty-notice-subtext">
+          We re-check official UofT dining servers every 10 minutes on page refresh.
+        </p>
+        <div class="empty-notice-actions">
+          <a href="/%s/%s/%s" class="btn-primary-action">🔄 Refresh Menu</a>
+        </div>
+        %s
+        %s
+      </div>
+    |}
+      (escape_html menu.meal_name)
+      (escape_html active_hall.name)
+      (escape_html menu.meal_name)
+      (escape_html day_name)
+      (escape_html month_name)
+      day_num
+      menu.hall_slug menu.date_str menu.meal_slug
+      other_meals_html
+      other_halls_html
+  else if diff = 1 then
+    Printf.sprintf {|
+      <div class="empty-notice tomorrow-missing-notice" style="margin-top: 24px;">
+        <div class="empty-notice-icon">🗓️</div>
+        <h3 class="empty-notice-title">Tomorrow's %s Menu Not Yet Available</h3>
+        <p class="empty-notice-desc">
+          The %s menu for tomorrow (%s, %s %d) has not been posted by %s yet. Upcoming menus are typically uploaded shortly before or early in the day.
+        </p>
+        <div class="empty-notice-actions">
+          <a href="/%s/%s/%s" class="jump-today-btn">↩ Return to Today's Menu</a>
+          <a href="/%s/%s/%s" class="btn-secondary-action">🔄 Check Again</a>
+        </div>
+        %s
+        %s
+      </div>
+    |}
+      (escape_html menu.meal_name)
+      (escape_html menu.meal_name)
+      (escape_html day_name)
+      (escape_html month_name)
+      day_num
+      (escape_html active_hall.name)
+      menu.hall_slug today_str menu.meal_slug
+      menu.hall_slug menu.date_str menu.meal_slug
+      other_meals_html
+      other_halls_html
+  else if diff > 1 then
+    Printf.sprintf {|
+      <div class="empty-notice future-missing-notice" style="margin-top: 24px;">
+        <div class="empty-notice-icon">🗓️</div>
+        <h3 class="empty-notice-title">Menu for %s Not Yet Published</h3>
+        <p class="empty-notice-desc">
+          Upcoming meals for %s (%s %d) have not been scheduled by %s yet. Residence dining halls generally release weekly menus in advance, but publishing dates may vary.
+        </p>
+        <div class="empty-notice-actions">
+          <a href="/%s/%s/%s" class="jump-today-btn">↩ Return to Today's Menu</a>
+          <a href="/%s/%s/%s" class="btn-secondary-action">🔄 Check Again</a>
+        </div>
+        %s
+        %s
+      </div>
+    |}
+      (escape_html day_name)
+      (escape_html day_name)
+      (escape_html month_name)
+      day_num
+      (escape_html active_hall.name)
+      menu.hall_slug today_str menu.meal_slug
+      menu.hall_slug menu.date_str menu.meal_slug
+      other_meals_html
+      other_halls_html
+  else if diff = -1 then
+    Printf.sprintf {|
+      <div class="empty-notice past-missing-notice" style="margin-top: 24px;">
+        <div class="empty-notice-icon">📋</div>
+        <h3 class="empty-notice-title">No Archived Menu for Yesterday</h3>
+        <p class="empty-notice-desc">
+          No published menu records were found for %s on yesterday (%s, %s %d).
+        </p>
+        <div class="empty-notice-actions">
+          <a href="/%s/%s/%s" class="jump-today-btn">↩ Return to Today's Menu</a>
+        </div>
+        %s
+        %s
+      </div>
+    |}
+      (escape_html menu.meal_name)
+      (escape_html day_name)
+      (escape_html month_name)
+      day_num
+      menu.hall_slug today_str menu.meal_slug
+      other_meals_html
+      other_halls_html
+  else
+    Printf.sprintf {|
+      <div class="empty-notice past-missing-notice" style="margin-top: 24px;">
+        <div class="empty-notice-icon">📁</div>
+        <h3 class="empty-notice-title">No Menu Archived for %s %d</h3>
+        <p class="empty-notice-desc">
+          No historical menu records are available for %s on %s, %s %d.
+        </p>
+        <div class="empty-notice-actions">
+          <a href="/%s/%s/%s" class="jump-today-btn">↩ Return to Today's Menu</a>
+        </div>
+        %s
+        %s
+      </div>
+    |}
+      (escape_html month_name)
+      day_num
+      (escape_html menu.meal_name)
+      (escape_html day_name)
+      (escape_html month_name)
+      day_num
+      menu.hall_slug today_str menu.meal_slug
+      other_meals_html
+      other_halls_html
+
 (** Render complete Main Menu Page for a hall, date, and meal *)
 let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) ?(prev_day_available = true) ?(next_day_available = true) () : string =
   let header_html = Printf.sprintf {|
@@ -511,48 +712,9 @@ let render_main_menu ~(menu : Types.meal_menu) ~(active_hall : Types.hall_info) 
       </div>
     </div>
   |} in
-  let is_summer =
-    let (_, m, _) = Date_utils.parse_date_components menu.date_str in
-    m >= 5 && m <= 8
-  in
   let stations_html =
     if menu.stations = [] then
-      if is_summer then
-        Printf.sprintf {|
-          <div class="empty-notice summer-notice" style="margin-top: 24px;">
-            <div style="font-size: 2.2rem; margin-bottom: 8px;">☀️</div>
-            <h3 style="font-size: 1.15rem; font-weight: 700;">Summer Term — Dining Hall Inactive</h3>
-            <p style="margin-top: 6px; font-size: 0.85rem; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.45;">
-              %s pauses regular residence dining plan operations during the summer term (May to August).
-            </p>
-            <p style="margin-top: 14px;">
-              <a href="/%s/%s" class="jump-today-btn" style="display:inline-flex; padding: 6px 14px;">View Today's Active Menu</a>
-            </p>
-          </div>
-        |} (escape_html active_hall.name) menu.hall_slug (get_today_str ())
-      else if not (Date_utils.is_date_in_allowed_range menu.date_str) then
-        Printf.sprintf {|
-          <div class="empty-notice" style="margin-top: 24px;">
-            <div style="font-size: 2.2rem; margin-bottom: 8px;">📅</div>
-            <h3 style="font-size: 1.15rem; font-weight: 700;">Date Outside Archive Bounds</h3>
-            <p style="margin-top: 6px; font-size: 0.85rem; max-width: 440px; margin-left: auto; margin-right: auto; line-height: 1.45;">
-              To protect university services, online menu lookups are limited to the past 14 days and upcoming 14 days.
-            </p>
-            <p style="margin-top: 14px;">
-              <a href="/%s/%s" class="jump-today-btn" style="display:inline-flex; padding: 6px 14px;">View Today's Active Menu</a>
-            </p>
-          </div>
-        |} menu.hall_slug (get_today_str ())
-      else
-        Printf.sprintf {|
-          <div class="empty-notice" style="margin-top: 24px;">
-            <h3>No Menu Scheduled</h3>
-            <p style="margin-top: 6px; font-size: 0.85rem;">No published meal items found for %s on this date.</p>
-            <p style="margin-top: 12px;">
-              <a href="/%s/%s" class="jump-today-btn" style="display:inline-flex; padding: 6px 14px;">View Today's Menu</a>
-            </p>
-          </div>
-        |} (escape_html menu.meal_name) menu.hall_slug (get_today_str ())
+      render_empty_menu_notice ~menu ~active_hall
     else
       List.map (fun (sg : Types.station_group) ->
         if is_salad_station sg then

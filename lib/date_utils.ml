@@ -58,7 +58,7 @@ let days_from_today (date_str : string) : int =
     tm_wday = 0; tm_yday = 0; tm_isdst = false;
   } in
   let (today_sec, _) = Unix.mktime today_tm in
-  int_of_float ((target_sec -. today_sec) /. 86400.0)
+  int_of_float (Float.round ((target_sec -. today_sec) /. 86400.0))
 
 let is_date_in_allowed_range (date_str : string) : bool =
   let diff = days_from_today date_str in

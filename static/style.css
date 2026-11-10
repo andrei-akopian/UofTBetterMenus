@@ -946,11 +946,189 @@ header.app-header {
 /* Empty State / Notice */
 .empty-notice {
   text-align: center;
-  padding: 40px 20px;
+  padding: 36px 20px;
   background: #ffffff;
   border-radius: var(--radius-md);
   border: 1px dashed var(--border-strong);
   color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+  max-width: 620px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.empty-notice-icon {
+  font-size: 2.4rem;
+  margin-bottom: 10px;
+  line-height: 1;
+}
+
+.empty-notice-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  margin-bottom: 8px;
+}
+
+.empty-notice-desc {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  max-width: 480px;
+  margin: 0 auto 10px auto;
+  color: var(--text-secondary);
+}
+
+.empty-notice-subtext {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.empty-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.btn-primary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--primary-dark);
+  color: #ffffff;
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.btn-primary-action:hover {
+  background: #334155;
+  transform: translateY(-1px);
+}
+
+.btn-secondary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card-subtle);
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid var(--border-subtle);
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary-action:hover {
+  background: #e2e8f0;
+  color: var(--text-primary);
+}
+
+.today-missing-notice {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.tomorrow-missing-notice,
+.future-missing-notice {
+  border-color: #e2e8f0;
+  background: #ffffff;
+}
+
+.past-missing-notice {
+  border-color: #e2e8f0;
+  background: #fdfdfd;
+}
+
+/* Suggestions for other meals and other halls */
+.available-meals-suggestion {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.available-meals-label {
+  font-size: 0.80rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.available-meals-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.available-meal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.available-meal-pill:hover {
+  background: #dbeafe;
+  color: #1e40af;
+  transform: translateY(-1px);
+}
+
+.alt-halls-suggestion {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.alt-halls-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.alt-halls-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.alt-hall-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.alt-hall-pill:hover {
+  background: #e2e8f0;
+  color: var(--text-primary);
 }
 
 /* Allergen Warning Banner */

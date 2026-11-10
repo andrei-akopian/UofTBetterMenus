@@ -54,6 +54,7 @@ type meal_menu = {
   meal_name : string;
   menu_id : string;
   stations : station_group list;
+  available_meals : string list;
 }
 
 (** Pre-defined 4 Residential Dining Halls *)
@@ -258,6 +259,7 @@ let meal_menu_to_yojson (m : meal_menu) : Yojson.Safe.t =
     ("meal_name", `String m.meal_name);
     ("menu_id", `String m.menu_id);
     ("stations", `List (List.map station_group_to_yojson m.stations));
+    ("available_meals", `List (List.map (fun s -> `String s) m.available_meals));
   ]
 
 let meal_menu_of_yojson (j : Yojson.Safe.t) : meal_menu option =
@@ -273,6 +275,12 @@ let meal_menu_of_yojson (j : Yojson.Safe.t) : meal_menu option =
       | Some (`List l) -> List.filter_map station_group_of_yojson l
       | _ -> []
     in
+    let available_meals =
+      match List.assoc_opt "available_meals" pairs with
+      | Some (`List l) ->
+        List.filter_map (function `String s -> Some s | _ -> None) l
+      | _ -> []
+    in
     Some {
       hall_slug = get_str "hall_slug";
       date_str = get_str "date_str";
@@ -280,6 +288,7 @@ let meal_menu_of_yojson (j : Yojson.Safe.t) : meal_menu option =
       meal_name = get_str "meal_name";
       menu_id = get_str "menu_id";
       stations;
+      available_meals;
     }
   | _ -> None
 
