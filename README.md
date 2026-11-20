@@ -33,6 +33,7 @@ docker compose up -d
 
 - [ ] Setup header with about and link to github repo.
 - [ ] procure all the photos of different food.
+- [ ] setup periodic scraping to serve pages faster
 
 ## Scraper
 

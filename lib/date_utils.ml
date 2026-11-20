@@ -28,8 +28,46 @@ let shift_date (s : string) (days : int) : string =
   let new_tm = Unix.localtime time_sec in
   Printf.sprintf "%04d-%02d-%02d" (new_tm.tm_year + 1900) (new_tm.tm_mon + 1) new_tm.tm_mday
 
+(** Current wall-clock time in Toronto (America/Toronto), independent of server TZ.
+    DST: second Sunday of March 02:00 EST to first Sunday of November 02:00 EDT. *)
+let toronto_now () : Unix.tm =
+  let now = Unix.time () in
+  let utc = Unix.gmtime now in
+  let year = utc.Unix.tm_year + 1900 in
+  (* Day-of-week (0 = Sunday) via Sakamoto's algorithm *)
+  let dow y m d =
+    let t = [|0;3;2;5;0;3;5;1;4;6;2;4|] in
+    let y = if m < 3 then y - 1 else y in
+    (y + y/4 - y/100 + y/400 + t.(m-1) + d) mod 7
+  in
+  let nth_sunday y m n =
+    let first = dow y m 1 in
+    1 + ((7 - first) mod 7) + 7 * (n - 1)
+  in
+  (* Days since epoch for civil date (UTC) *)
+  let days_from_civil y m d =
+    let y = if m <= 2 then y - 1 else y in
+    let era = (if y >= 0 then y else y - 399) / 400 in
+    let yoe = y - era * 400 in
+    let mp = (m + 9) mod 12 in
+    let doy = (153 * mp + 2) / 5 + d - 1 in
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy in
+    era * 146097 + doe - 719468
+  in
+  let epoch y m d h_utc = float_of_int (days_from_civil y m d) *. 86400.0 +. float_of_int h_utc *. 3600.0 in
+  (* DST starts 02:00 EST = 07:00 UTC; ends 02:00 EDT = 06:00 UTC *)
+  let dst_start = epoch year 3 (nth_sunday year 3 2) 7 in
+  let dst_end = epoch year 11 (nth_sunday year 11 1) 6 in
+  let offset = if now >= dst_start && now < dst_end then -4.0 else -5.0 in
+  Unix.gmtime (now +. offset *. 3600.0)
+
+(** Toronto hour as a float, e.g. 13.5 = 1:30pm *)
+let toronto_hour_float () : float =
+  let tm = toronto_now () in
+  float_of_int tm.Unix.tm_hour +. float_of_int tm.Unix.tm_min /. 60.0
+
 let get_today_str () : string =
-  let tm = Unix.localtime (Unix.time ()) in
+  let tm = toronto_now () in
   Printf.sprintf "%04d-%02d-%02d" (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
 
 let clean_date (s : string) : string =

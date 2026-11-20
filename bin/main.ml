@@ -3,11 +3,13 @@
 open Lwt.Infix
 open Menu_lib
 
+(* Toronto time. Breakfast ~7-11, lunch ~11-14, dinner ~17-21.
+   Gaps pick the nearest upcoming/most relevant meal: before 11 -> breakfast,
+   11 to 15:30 -> lunch (covers the 14-17 gap's first half), after that -> dinner. *)
 let get_current_meal_slug () : string =
-  let tm = Unix.localtime (Unix.time ()) in
-  let h = tm.Unix.tm_hour in
-  if h < 11 then "breakfast"
-  else if h < 16 then "lunch"
+  let h = Date_utils.toronto_hour_float () in
+  if h < 11.0 then "breakfast"
+  else if h < 15.5 then "lunch"
   else "dinner"
 
 let port =

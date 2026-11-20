@@ -203,6 +203,32 @@ header.app-header {
   flex-shrink: 0;
 }
 
+.day-btn-group {
+  display: flex;
+  gap: 4px;
+  flex: 1 1 0;
+  max-width: 40%;
+}
+
+.day-btn-group .day-btn {
+  max-width: none;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.day-btn-today {
+  flex-grow: 1.5 !important;
+  white-space: nowrap;
+  color: var(--accent-color);
+  background: var(--accent-bg);
+  border-color: var(--accent-color);
+}
+
+.day-btn-today:hover {
+  background: #bae6fd;
+  color: var(--accent-color);
+}
+
 .day-btn-placeholder {
   display: inline-flex;
   min-height: 42px;
@@ -214,9 +240,10 @@ header.app-header {
 
 .day-indicator {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 2px;
   flex: 0 1 auto;
   min-width: 0;
   text-align: center;
@@ -612,6 +639,17 @@ header.app-header {
     min-height: 42px;
     max-width: 32%;
     font-size: 0.78rem;
+  }
+
+  .day-btn-group {
+    gap: 3px;
+    max-width: 42%;
+  }
+
+  .day-btn-group .day-btn {
+    padding: 7px 3px;
+    gap: 2px;
+    font-size: 0.74rem;
   }
 
   .day-btn-placeholder {

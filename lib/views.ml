@@ -99,17 +99,17 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
     | Some other -> Printf.sprintf {|<span class="badge badge-neutral">%s</span>|} (escape_html other)
     | None -> ""
   in
-  let jump_today_row =
-    if not is_today then
-      Printf.sprintf {|
-        <div class="jump-today-row">
-          <a href="%s" class="jump-today-btn">
-            ↩ Return to Today
-          </a>
-        </div>
-      |} today_url
-    else ""
+  let is_past = (not is_today) && clean_date date_str < clean_date today in
+  let today_label = {|<span class="day-btn-label"><span class="day-btn-text-full">Back to Today</span><span class="day-btn-text-short">Today</span></span>|} in
+  (* Arrow points toward today: left when viewing a future day, right when viewing a past day *)
+  let today_btn_html =
+    let inner =
+      if is_past then today_label ^ {|<span class="day-btn-arrow" aria-hidden="true">›</span>|}
+      else {|<span class="day-btn-arrow" aria-hidden="true">‹</span>|} ^ today_label
+    in
+    Printf.sprintf {|<a href="%s" class="day-btn day-btn-today" aria-label="Back to today's menu">%s</a>|} today_url inner
   in
+  let is_future = (not is_today) && not is_past in
   let prev_btn_html =
     if prev_day_available then
       Printf.sprintf {|
@@ -121,8 +121,7 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
           </span>
         </a>
       |} prev_url
-    else
-      {|<span class="day-btn-placeholder" aria-hidden="true"></span>|}
+    else ""
   in
   let next_btn_html =
     if next_day_available then
@@ -135,9 +134,14 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
           <span class="day-btn-arrow" aria-hidden="true">›</span>
         </a>
       |} next_url
-    else
-      {|<span class="day-btn-placeholder" aria-hidden="true"></span>|}
+    else ""
   in
+  let group inner =
+    if inner = "" then {|<span class="day-btn-placeholder" aria-hidden="true"></span>|}
+    else Printf.sprintf {|<div class="day-btn-group">%s</div>|} inner
+  in
+  let left_html = group (if is_future then prev_btn_html ^ today_btn_html else prev_btn_html) in
+  let right_html = group (if is_past then today_btn_html ^ next_btn_html else next_btn_html) in
   Printf.sprintf {|
     <div class="day-switcher-wrapper">
       <div class="day-switcher">
@@ -150,9 +154,8 @@ let render_day_switcher ~(hall_slug : string) ~(date_str : string) ~(meal_slug :
         </div>
         %s
       </div>
-      %s
     </div>
-  |} prev_btn_html (escape_html day_name) (escape_html day_short) (escape_html month_name) day_num (escape_html year_str) badge_html next_btn_html jump_today_row
+  |} left_html (escape_html day_name) (escape_html day_short) (escape_html month_name) day_num (escape_html year_str) badge_html right_html
 
 (** Render Meal Switcher with 1-click Breakfast, Lunch, Dinner buttons *)
 let render_meal_switcher ~(hall_slug : string) ~(date_str : string) ~(active_meal : string) : string =
